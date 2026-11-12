@@ -1,0 +1,37 @@
+[package]
+name = "cgp-orm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "AGPL-3.0-or-later"
+description = "Transport-independent SeaORM repository and resource-service components for Context-Generic Programming (cgp-fork)"
+keywords = ["cgp", "sea-orm", "repository", "orm", "database"]
+categories = ["database", "rust-patterns", "asynchronous"]
+readme = "README.md"
+documentation = "https://docs.rs/cgp-orm"
+repository = "https://github.com/Just-Replicant/cgp-orm"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+name = "cgp_orm"
+path = "src/lib.rs"
+
+[dependencies]
+cgp-fork = "1"
+sea-orm = { version = "2", default-features = false }
+thiserror = "2"
+
+[dev-dependencies]
+anyhow = "1"
+cgp-fork = { version = "1", features = ["anyhow"] }
+sea-orm = { version = "2", default-features = false, features = [
+    "sqlx-sqlite",
+    "runtime-tokio",
+    "macros",
+    "with-uuid",
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["v4"] }
