@@ -12,8 +12,8 @@ pub use crate::components::repository::{
 };
 pub use crate::components::service::{
     CanApplyUpdateInput, CanCreateResource, CanDecodeCreateInput, CanDeleteResource,
-    CanEncodeOutput, CanGetResource, CanListResources, CanUpdateResource,
-    HasCreateInputType, HasOutputType, HasUpdateInputType,
+    CanEncodeOutput, CanGetResource, CanListResources, CanUpdateResource, HasCreateInputType,
+    HasOutputType, HasUpdateInputType,
 };
 pub use crate::components::transaction::CanPrepareEntityWrite;
 pub use crate::error::{
