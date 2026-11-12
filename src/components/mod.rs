@@ -32,7 +32,7 @@ pub use service::{
     CanUpdateResource, CreateResource, CreateResourceComponent, DecodeCreateInput,
     DecodeCreateInputComponent, DeleteResource, DeleteResourceComponent, EncodeOutput,
     EncodeOutputComponent, GetResource, GetResourceComponent, HasCreateInputType, HasOutputType,
-    HasUpdateInputType,
-    ListResources, ListResourcesComponent, UpdateResource, UpdateResourceComponent,
+    HasUpdateInputType, ListResources, ListResourcesComponent, UpdateResource,
+    UpdateResourceComponent,
 };
 pub use transaction::{CanPrepareEntityWrite, EntityWritePreparer, EntityWritePreparerComponent};
