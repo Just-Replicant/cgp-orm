@@ -47,6 +47,32 @@ pub struct ErrPrimaryKeyUnset<Column> {
     pub column: Column,
 }
 
+/// Setting a primary-key value on an active model failed.
+///
+/// [`sea_orm::ActiveModelTrait::try_set`] rejects a type mismatch, which
+/// indicates a programming error in the entity definition. This is returned
+/// as a typed error — and raised through [`cgp_fork::prelude::CanRaiseError`]
+/// by callers — so a bad entity does not panic on a request path.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("failed to set a primary-key column on entity {entity_name}: {message}")]
+pub struct ErrPrimaryKeySetFailed {
+    /// The entity type name (`core::any::type_name`).
+    pub entity_name: &'static str,
+    /// Display of the underlying SeaORM [`sea_orm::DbErr`].
+    pub message: String,
+}
+
+impl ErrPrimaryKeySetFailed {
+    /// Build an error that names entity `E` and records `err`.
+    #[must_use]
+    pub fn of<E>(err: &sea_orm::DbErr) -> Self {
+        Self {
+            entity_name: core::any::type_name::<E>(),
+            message: err.to_string(),
+        }
+    }
+}
+
 /// The entity's primary key has an arity this crate cannot encode.
 ///
 /// Raised when a key has **zero** columns. SeaORM 2 encodes arity 1–3 as
@@ -83,9 +109,25 @@ pub struct ErrConflictFetchFailed;
 ///
 /// The generic layer does not assume an `i32` identifier or an entity
 /// route name. Application error maps may wrap this with more context.
+///
+/// `entity_name` is [`core::any::type_name`] only, so this type stays
+/// lifetime-free. Construct it with [`ErrEntityNotFound::of`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("entity not found")]
-pub struct ErrEntityNotFound;
+#[error("entity {entity_name} not found")]
+pub struct ErrEntityNotFound {
+    /// The entity type name (`core::any::type_name`).
+    pub entity_name: &'static str,
+}
+
+impl ErrEntityNotFound {
+    /// Build an error that names entity `E`.
+    #[must_use]
+    pub fn of<E>() -> Self {
+        Self {
+            entity_name: core::any::type_name::<E>(),
+        }
+    }
+}
 
 /// A unique-constraint violation occurred and the chosen policy is to fail.
 ///
@@ -95,3 +137,42 @@ pub struct ErrEntityNotFound;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("unique constraint violated")]
 pub struct ErrUniqueConflict;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_not_found_names_the_entity() {
+        let err = ErrEntityNotFound::of::<u32>();
+        assert!(
+            err.entity_name.contains("u32"),
+            "entity_name should be type_name, got {}",
+            err.entity_name
+        );
+        assert_eq!(
+            err.to_string(),
+            format!("entity {} not found", err.entity_name)
+        );
+    }
+
+    #[test]
+    fn missing_primary_key_and_not_found_are_lifetime_free() {
+        fn assert_static<T: 'static>(_: T) {}
+        assert_static(ErrEntityNotFound::of::<u32>());
+        assert_static(ErrMissingPrimaryKey::of::<u32>());
+        let db = sea_orm::DbErr::Custom("type mismatch".into());
+        assert_static(ErrPrimaryKeySetFailed::of::<u32>(&db));
+    }
+
+    #[test]
+    fn primary_key_set_failed_records_the_db_message() {
+        let db = sea_orm::DbErr::Custom("type mismatch".into());
+        let err = ErrPrimaryKeySetFailed::of::<u32>(&db);
+        assert!(err.entity_name.contains("u32"));
+        assert!(err.message.contains("type mismatch"));
+        let displayed = err.to_string();
+        assert!(displayed.contains("type mismatch"));
+        assert!(displayed.contains(err.entity_name));
+    }
+}

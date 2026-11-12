@@ -14,7 +14,9 @@ use sea_orm::entity::{
 use sea_orm::sea_query::{FromValueTuple, IntoValueTuple, Value, ValueTuple};
 use sea_orm::{DbErr, IntoActiveModel};
 
-use crate::error::{ErrMissingPrimaryKey, ErrPrimaryKeyUnset, ErrUnsupportedKeyArity};
+use crate::error::{
+    ErrMissingPrimaryKey, ErrPrimaryKeySetFailed, ErrPrimaryKeyUnset, ErrUnsupportedKeyArity,
+};
 
 /// Failure when reading a complete primary key from an active model.
 #[derive(Debug)]
@@ -90,11 +92,30 @@ where
     Ok(FromValueTuple::from_value_tuple(tuple))
 }
 
+/// Failure when writing a complete primary key onto an active model.
+#[derive(Debug)]
+pub enum PrimaryKeyWriteError {
+    /// The entity declares no primary-key columns.
+    Missing(ErrMissingPrimaryKey),
+    /// The key's arity cannot be encoded, or does not match the entity.
+    Arity(ErrUnsupportedKeyArity),
+    /// [`ActiveModelTrait::try_set`] rejected a primary-key value.
+    ///
+    /// This is typically a type mismatch in the entity definition. It is
+    /// a typed error so a request path can raise it through
+    /// `CanRaiseError` instead of panicking.
+    SetFailed(ErrPrimaryKeySetFailed),
+}
+
 /// Write every primary-key column on `model` from a complete key value.
+///
+/// A `try_set` failure is returned as [`PrimaryKeyWriteError::SetFailed`]
+/// rather than panicking, so a bad entity definition is a typed error on
+/// the request path. Callers raise it through `CanRaiseError`.
 pub fn set_primary_key_on_active_model<E>(
     model: &mut E::ActiveModel,
     id: <<E as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType,
-) -> Result<(), PrimaryKeyReadError<E::Column>>
+) -> Result<(), PrimaryKeyWriteError>
 where
     E: EntityTrait,
     E::ActiveModel: ActiveModelTrait<Entity = E>,
@@ -103,20 +124,20 @@ where
 {
     let columns = primary_key_columns::<E>();
     if columns.is_empty() {
-        return Err(PrimaryKeyReadError::Missing(ErrMissingPrimaryKey::of::<E>()));
+        return Err(PrimaryKeyWriteError::Missing(
+            ErrMissingPrimaryKey::of::<E>(),
+        ));
     }
     let values = value_tuple_to_vec(id.into_value_tuple());
     if values.len() != columns.len() {
-        return Err(PrimaryKeyReadError::Arity(ErrUnsupportedKeyArity {
+        return Err(PrimaryKeyWriteError::Arity(ErrUnsupportedKeyArity {
             arity: values.len(),
         }));
     }
     for (column, value) in columns.into_iter().zip(values) {
-        // `try_set` only fails on a type mismatch, which would be a
-        // programming error in the entity definition.
-        model
-            .try_set(column, value)
-            .expect("primary-key column accepts its own ValueType component");
+        model.try_set(column, value).map_err(|err| {
+            PrimaryKeyWriteError::SetFailed(ErrPrimaryKeySetFailed::of::<E>(&err))
+        })?;
     }
     Ok(())
 }
