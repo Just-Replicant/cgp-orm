@@ -4,7 +4,7 @@ use cgp_fork::prelude::*;
 use sea_orm::DbErr;
 
 /// Decide whether a SeaORM error is a unique (or primary-key) constraint
-/// violation, so [`crate::components::CanInsertOrGetEntity`] can fetch the
+/// violation, so [`crate::components::CanGetOrCreateEntity`] can fetch the
 /// existing row instead of failing.
 #[cgp_component(UniqueConflictDetector)]
 pub trait CanDetectUniqueConflict {

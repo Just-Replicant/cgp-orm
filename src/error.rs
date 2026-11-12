@@ -68,8 +68,8 @@ pub struct ErrUnsupportedKeyArity {
 #[error("pagination requires a deterministic ordering policy, but none was provided")]
 pub struct ErrMissingOrdering;
 
-/// `insert_or_get` observed a unique-constraint conflict, then could not
-/// fetch the existing row by identity.
+/// `get_or_create` or `upsert` observed a unique-constraint conflict, then
+/// could not fetch the existing row by identity.
 ///
 /// This usually means the identity policy does not match the unique
 /// constraint that fired, or the conflicting row was deleted in between.

@@ -7,8 +7,8 @@ pub use crate::components::conflict::CanDetectUniqueConflict;
 pub use crate::components::identity::CanBuildIdentityCondition;
 pub use crate::components::pagination::{CanBuildEntityOrder, HasPaginationPolicy};
 pub use crate::components::repository::{
-    CanDeleteEntityById, CanFindEntityByIdentity, CanGetEntityById, CanInsertEntity,
-    CanInsertOrGetEntity, CanPaginateEntities, CanUpdateEntityById, CanUpsertEntity,
+    CanDeleteEntityById, CanFindEntityByIdentity, CanGetEntityById, CanGetOrCreateEntity,
+    CanInsertEntity, CanPaginateEntities, CanUpdateEntityById, CanUpsertEntity,
 };
 pub use crate::components::service::{
     CanApplyUpdateInput, CanCreateResource, CanDecodeCreateInput, CanDeleteResource,

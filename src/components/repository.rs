@@ -64,17 +64,19 @@ pub trait CanFindEntityByIdentity {
     ) -> Result<Option<ModelOf<Self>>, Error>;
 }
 
-/// Insert a row, or return the existing one when a unique constraint fires.
+/// Return the row for this identity, inserting it when it is absent.
 ///
-/// This operation **relies on a database unique constraint**. A transaction
-/// around find-then-insert is not used and would not prevent concurrent
-/// duplicates by itself. On conflict the existing row is fetched by identity.
-#[cgp_component(EntityInsertOrGetter)]
+/// The existing row is loaded first, so a repeat call does not insert and
+/// does not consume an autoincrement value. This operation **relies on a
+/// database unique constraint**. A transaction around find-then-insert is
+/// not atomic by itself. When a concurrent insert wins, the transaction is
+/// rolled back and the existing row is fetched by identity.
+#[cgp_component(EntityGetOrCreator)]
 #[cgp_async(Send)]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]
-pub trait CanInsertOrGetEntity {
-    /// Insert `model`, or fetch the conflicting row.
-    async fn insert_or_get(
+pub trait CanGetOrCreateEntity {
+    /// Return the existing row, or insert `model` when the identity is absent.
+    async fn get_or_create(
         &self,
         model: ActiveModelOf<Self>,
     ) -> Result<(ModelOf<Self>, InsertOutcome), Error>;

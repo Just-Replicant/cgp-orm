@@ -32,12 +32,12 @@ pub type ColumnOf<Context> = <<Context as HasEntityType>::Entity as EntityTrait>
 pub type PrimaryKeyOf<Context> =
     <<<Context as HasEntityType>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType;
 
-/// Outcome of [`CanInsertOrGetEntity::insert_or_get`](crate::components::CanInsertOrGetEntity::insert_or_get).
+/// Outcome of [`CanGetOrCreateEntity::get_or_create`](crate::components::CanGetOrCreateEntity::get_or_create).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InsertOutcome {
     /// A new row was inserted.
     Inserted,
-    /// A unique-constraint conflict occurred and the existing row was returned.
+    /// The identity already had a row, or a concurrent insert won the race.
     Existing,
 }
 

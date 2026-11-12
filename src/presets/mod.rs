@@ -4,7 +4,7 @@
 //! `extra(...)` / table entry replaces a stack key by token identity,
 //! the same way the original `LookupStack` / `CrudStack` did.
 //!
-//! - [`RepositoryLookupStack`] — identity, insert, insert-or-get, upsert,
+//! - [`RepositoryLookupStack`] — identity, insert, get-or-create, upsert,
 //!   pagination, and the default policies (unique-columns identity,
 //!   primary-key ordering, 20/100 pagination, standard unique-conflict
 //!   detection, no-op write hook).

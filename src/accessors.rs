@@ -30,6 +30,6 @@ pub trait HasDbConn {
 #[use_type(HasEntityType.Entity)]
 pub trait HasUniqueColumns {
     /// Columns that together identify a unique row (must match a database
-    /// unique constraint used by `insert_or_get`).
+    /// unique constraint used by `get_or_create`).
     fn unique_columns(&self) -> Vec<ColumnOf<Self>>;
 }

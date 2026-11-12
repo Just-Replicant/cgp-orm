@@ -4,24 +4,26 @@ use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, TransactionTrait};
 use crate::accessors::HasDbConn;
 use crate::components::conflict::CanDetectUniqueConflict;
 use crate::components::repository::{
-    CanFindEntityByIdentity, EntityInsertOrGetter, EntityInsertOrGetterComponent,
+    CanFindEntityByIdentity, EntityGetOrCreator, EntityGetOrCreatorComponent,
 };
 use crate::components::transaction::CanPrepareEntityWrite;
 use crate::error::ErrConflictFetchFailed;
 use crate::transaction::conclude_transaction;
 use crate::types::{ActiveModelOf, HasEntityType, InsertOutcome, ModelOf};
 
-/// Insert, and on a unique-constraint conflict fetch the existing row.
+/// Return the row for this identity, inserting only when it is absent.
 ///
-/// This relies on a **database unique constraint**. The implementation
-/// attempts the insert and, if [`CanDetectUniqueConflict`] recognizes the
-/// error, rolls the transaction back (so a write hook's side effects are
-/// undone) and looks the row up by identity. A transaction around
-/// find-then-insert is deliberately not used: it would not prevent
-/// concurrent duplicates.
-pub struct InsertOrGetEntity;
+/// The existing row is loaded first. A repeat call does not insert, so it
+/// does not run the write hook and does not consume an autoincrement value.
+/// This still relies on a **database unique constraint**: if a concurrent
+/// insert wins, the insert is rolled back (undoing the write hook) and the
+/// winner is loaded on a clean connection. PostgreSQL aborts a transaction
+/// after a unique violation, so that fetch must not use the failed
+/// transaction. The preceding select does not by itself prevent concurrent
+/// duplicates.
+pub struct GetOrCreateEntity;
 
-#[cgp_impl(InsertOrGetEntity)]
+#[cgp_impl(GetOrCreateEntity)]
 #[uses(
     HasDbConn,
     CanPrepareEntityWrite,
@@ -31,7 +33,7 @@ pub struct InsertOrGetEntity;
     CanRaiseError<ErrConflictFetchFailed>
 )]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]
-impl EntityInsertOrGetter
+impl EntityGetOrCreator
 where
     Self: Send + Sync,
     Error: Send,
@@ -39,13 +41,16 @@ where
     <Entity as EntityTrait>::Model: IntoActiveModel<<Entity as EntityTrait>::ActiveModel> + Send,
     <Entity as EntityTrait>::ActiveModel: ActiveModelTrait<Entity = Entity> + Send + Sync + Clone,
 {
-    async fn insert_or_get(
+    async fn get_or_create(
         &self,
         model: ActiveModelOf<Self>,
     ) -> Result<(ModelOf<Self>, InsertOutcome), Error> {
         let identity_model = model.clone();
-        let txn = self.db_conn().begin().await.map_err(Self::raise_error)?;
+        if let Some(existing) = self.find_by_identity(&identity_model).await? {
+            return Ok((existing, InsertOutcome::Existing));
+        }
 
+        let txn = self.db_conn().begin().await.map_err(Self::raise_error)?;
         let result = async {
             self.prepare_entity_write(&txn, &model).await?;
             match model.insert(&txn).await {

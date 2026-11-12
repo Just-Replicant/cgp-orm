@@ -11,7 +11,7 @@ use crate::types::{ActiveModelOf, HasEntityType, ModelOf};
 ///
 /// Unique conflicts are returned as the original [`sea_orm::DbErr`]; this
 /// operation does not fetch an existing row. Use
-/// [`crate::providers::InsertOrGetEntity`] for that.
+/// [`crate::providers::GetOrCreateEntity`] for that.
 pub struct InsertEntity;
 
 #[cgp_impl(InsertEntity)]

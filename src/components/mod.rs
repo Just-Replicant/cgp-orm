@@ -19,13 +19,12 @@ pub use pagination::{
     PaginationPolicy, PaginationPolicyComponent,
 };
 pub use repository::{
-    CanDeleteEntityById, CanFindEntityByIdentity, CanGetEntityById, CanInsertEntity,
-    CanInsertOrGetEntity, CanPaginateEntities, CanUpdateEntityById, CanUpsertEntity,
-    EntityByIdDeleter, EntityByIdDeleterComponent, EntityByIdGetter, EntityByIdGetterComponent,
-    EntityByIdUpdater, EntityByIdUpdaterComponent, EntityIdentityFinder,
-    EntityIdentityFinderComponent, EntityInsertOrGetter, EntityInsertOrGetterComponent,
-    EntityInserter, EntityInserterComponent, EntityPaginator, EntityPaginatorComponent,
-    EntityUpserter, EntityUpserterComponent,
+    CanDeleteEntityById, CanFindEntityByIdentity, CanGetEntityById, CanGetOrCreateEntity,
+    CanInsertEntity, CanPaginateEntities, CanUpdateEntityById, CanUpsertEntity, EntityByIdDeleter,
+    EntityByIdDeleterComponent, EntityByIdGetter, EntityByIdGetterComponent, EntityByIdUpdater,
+    EntityByIdUpdaterComponent, EntityGetOrCreator, EntityGetOrCreatorComponent,
+    EntityIdentityFinder, EntityIdentityFinderComponent, EntityInserter, EntityInserterComponent,
+    EntityPaginator, EntityPaginatorComponent, EntityUpserter, EntityUpserterComponent,
 };
 pub use service::{
     ApplyUpdateInput, ApplyUpdateInputComponent, CanApplyUpdateInput, CanCreateResource,

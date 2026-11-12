@@ -11,7 +11,7 @@ use cgp_orm::providers::conflict::StandardUniqueConflict;
 use cgp_orm::providers::identity::UniqueColumnsIdentity;
 use cgp_orm::providers::pagination::{DefaultPaginationPolicy, PrimaryKeyOrdering};
 use cgp_orm::providers::repository::{
-    DeleteEntityById, FindEntityByIdentity, GetEntityById, InsertEntity, InsertOrGetEntity,
+    DeleteEntityById, FindEntityByIdentity, GetEntityById, GetOrCreateEntity, InsertEntity,
     PaginateEntities, UpdateEntityById, UpsertEntity,
 };
 use cgp_orm::providers::service::{
@@ -31,8 +31,8 @@ cgp_preset! {
             FindEntityByIdentity,
         cgp_orm::components::EntityInserterComponent:
             InsertEntity,
-        cgp_orm::components::EntityInsertOrGetterComponent:
-            InsertOrGetEntity,
+        cgp_orm::components::EntityGetOrCreatorComponent:
+            GetOrCreateEntity,
         cgp_orm::components::EntityUpserterComponent:
             UpsertEntity,
         cgp_orm::components::EntityWritePreparerComponent:

@@ -77,7 +77,7 @@ pub trait CanCreateResource {
     async fn create(&self, input: CreateInput) -> Result<Output, Error>;
 }
 
-/// Create a resource or return the existing one (`insert_or_get`).
+/// Create a resource or return the existing one (`get_or_create`).
 ///
 /// This is the conflict-safe counterpart of [`CanCreateResource`] and the
 /// correct replacement for a generic `find_or_insert` used as "create".

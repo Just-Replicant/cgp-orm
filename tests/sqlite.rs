@@ -169,11 +169,11 @@ async fn composite_key_insert_get_update_delete() {
 }
 
 // ---------------------------------------------------------------------------
-// insert_or_get under a unique-constraint conflict
+// get_or_create under a unique-constraint conflict
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn insert_or_get_returns_existing_on_unique_conflict() {
+async fn get_or_create_returns_existing_on_unique_conflict() {
     let (app, _db) = setup_items().await;
 
     let first = app
@@ -198,52 +198,63 @@ async fn insert_or_get_returns_existing_on_unique_conflict() {
         "insert must not swallow unique conflicts"
     );
 
-    let (second, outcome) = app
-        .insert_or_get(item::ActiveModel {
+    let (second, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        item::ActiveModel {
             id: NotSet,
             name: Set("shared".into()),
             value: Set(99),
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(outcome, InsertOutcome::Existing);
     assert_eq!(second.id, first.id);
     assert_eq!(second.value, 1, "existing row is returned, not the input");
 
-    let (third, outcome) = app
-        .insert_or_get(item::ActiveModel {
+    let (third, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        item::ActiveModel {
             id: NotSet,
             name: Set("fresh".into()),
             value: Set(3),
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(outcome, InsertOutcome::Inserted);
-    assert_ne!(third.id, first.id);
+    assert_eq!(
+        third.id, first.id + 1,
+        "a repeat get_or_create must not consume an id"
+    );
 }
 
 #[tokio::test]
-async fn insert_or_get_composite_key_conflict() {
+async fn get_or_create_composite_key_conflict() {
     let (app, _db) = setup_memberships().await;
 
-    let (first, outcome) = app
-        .insert_or_get(membership::ActiveModel {
+    let (first, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        membership::ActiveModel {
             user_id: Set(1),
             group_id: Set(2),
             role: Set("admin".into()),
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(outcome, InsertOutcome::Inserted);
 
-    let (second, outcome) = app
-        .insert_or_get(membership::ActiveModel {
+    let (second, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        membership::ActiveModel {
             user_id: Set(1),
             group_id: Set(2),
             role: Set("ignored".into()),
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(outcome, InsertOutcome::Existing);
     assert_eq!(second.role, "admin");
     assert_eq!(
