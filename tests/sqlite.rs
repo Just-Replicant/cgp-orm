@@ -224,7 +224,8 @@ async fn get_or_create_returns_existing_on_unique_conflict() {
     .unwrap();
     assert_eq!(outcome, InsertOutcome::Inserted);
     assert_eq!(
-        third.id, first.id + 1,
+        third.id,
+        first.id + 1,
         "a repeat get_or_create must not consume an id"
     );
 }
@@ -307,7 +308,8 @@ async fn upsert_inserts_then_updates() {
         .unwrap();
     assert_eq!(outcome, UpsertOutcome::Inserted);
     assert_eq!(
-        other.id, created.id + 1,
+        other.id,
+        created.id + 1,
         "updating an existing identity must not consume an id"
     );
 }
@@ -522,6 +524,3 @@ async fn resource_service_uuid_and_composite() {
     let got = mems.get((4, 5)).await.unwrap().expect("composite get");
     assert_eq!(got.role, "r");
 }
-
-
-
