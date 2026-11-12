@@ -296,6 +296,20 @@ async fn upsert_inserts_then_updates() {
 
     let page = app.paginate(PageRequest::new(1, 10)).await.unwrap();
     assert_eq!(page.total, 1, "upsert must not insert a second row");
+
+    let (other, outcome) = app
+        .upsert(item::ActiveModel {
+            id: NotSet,
+            name: Set("k2".into()),
+            value: Set(3),
+        })
+        .await
+        .unwrap();
+    assert_eq!(outcome, UpsertOutcome::Inserted);
+    assert_eq!(
+        other.id, created.id + 1,
+        "updating an existing identity must not consume an id"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +398,34 @@ async fn rollback_preserves_the_original_hook_error() {
 
     let count = item::Entity::find().all(&db).await.unwrap().len();
     assert_eq!(count, 0, "failed write must be rolled back");
+}
+
+#[tokio::test]
+async fn get_or_create_existing_skips_the_write_hook() {
+    let (app, db) = setup_items().await;
+    let created = app
+        .insert(item::ActiveModel {
+            id: NotSet,
+            name: Set("shared".into()),
+            value: Set(1),
+        })
+        .await
+        .unwrap();
+
+    let failing = FailingItemApp::new(db);
+    let (existing, outcome) = CanGetOrCreateEntity::get_or_create(
+        &failing,
+        item::ActiveModel {
+            id: NotSet,
+            name: Set("shared".into()),
+            value: Set(99),
+        },
+    )
+    .await
+    .expect("an existing row must not run the write hook");
+    assert_eq!(outcome, InsertOutcome::Existing);
+    assert_eq!(existing.id, created.id);
+    assert_eq!(existing.value, 1);
 }
 
 // ---------------------------------------------------------------------------
