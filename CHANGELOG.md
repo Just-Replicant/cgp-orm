@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/Just-Replicant/cgp-orm/compare/v0.1.0...v0.1.1) - 2026-11-12
+
+### Changed
+
+- *(service)* create via get_or_create
+- *(repository)* rename insert_or_get to get_or_create
+- *(repository)* rename find_by_id to get_by_id
+
+### Documentation
+
+- document get_by_id and get_or_create API
+
+### Fixed
+
+- *(repository)* resolve upsert conflict on a fresh transaction
+
 ### Breaking
 
 - Renamed the repository method `find_by_id` to `get_by_id`. The consumer
