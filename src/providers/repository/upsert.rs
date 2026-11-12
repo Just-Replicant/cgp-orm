@@ -18,10 +18,12 @@ use crate::util::{MergeUpdateError, merge_update};
 
 /// Insert a row, or merge-update the existing one.
 ///
-/// The identity policy locates the existing row. If a concurrent insert
-/// wins the unique-constraint race, the conflict is handled explicitly
-/// (fetch + merge) rather than by assuming a find-then-insert transaction
-/// is atomic.
+/// The identity policy locates the existing row, and a hit updates it
+/// without inserting. If a concurrent insert wins the unique-constraint
+/// race, the failed transaction is rolled back and the merge runs on a
+/// new one. PostgreSQL aborts a transaction after a unique violation, so
+/// the follow-up select cannot use that same transaction. A
+/// find-then-insert transaction is not atomic by itself.
 pub struct UpsertEntity;
 
 #[cgp_impl(UpsertEntity)]
@@ -56,31 +58,19 @@ where
             match Entity::find().filter(condition).one(&txn).await {
                 Ok(Some(existing)) => {
                     self.prepare_entity_write(&txn, &model).await?;
-                    merge_and_update::<Entity, Error, Self>(&txn, existing, model).await
+                    merge_and_update::<Entity, Error, Self>(&txn, existing, model)
+                        .await
+                        .map(Ok)
                 }
                 Ok(None) => {
                     self.prepare_entity_write(&txn, &model).await?;
                     match model.clone().insert(&txn).await {
-                        Ok(inserted) => Ok((inserted, UpsertOutcome::Inserted)),
+                        Ok(inserted) => Ok(Ok((inserted, UpsertOutcome::Inserted))),
                         Err(db_err) if self.is_unique_conflict(&db_err) => {
-                            // Concurrent insert won. Fetch the row in this
-                            // transaction if the backend allows it (SQLite
-                            // does); otherwise the outer path reports the
-                            // error. PostgreSQL would have aborted the
-                            // txn, so treat a follow-up failure as
-                            // `ErrConflictFetchFailed` after rollback.
-                            let existing = Entity::find()
-                                .filter(self.identity_condition(&model)?)
-                                .one(&txn)
-                                .await
-                                .map_err(Self::raise_error)?;
-                            match existing {
-                                Some(existing) => {
-                                    merge_and_update::<Entity, Error, Self>(&txn, existing, model)
-                                        .await
-                                }
-                                None => Err(Self::raise_error(ErrConflictFetchFailed)),
-                            }
+                            // The insert lost the race. Hand the model back
+                            // so the outer path can roll this transaction
+                            // back and merge on a clean connection.
+                            Ok(Err(model))
                         }
                         Err(db_err) => Err(Self::raise_error(db_err)),
                     }
@@ -90,7 +80,31 @@ where
         }
         .await;
 
-        conclude_transaction(txn, result, Self::raise_error).await
+        match result {
+            Ok(Ok(outcome)) => conclude_transaction(txn, Ok(outcome), Self::raise_error).await,
+            Ok(Err(model)) => {
+                txn.rollback().await.map_err(Self::raise_error)?;
+                let condition = self.identity_condition(&model)?;
+                let txn = self.db_conn().begin().await.map_err(Self::raise_error)?;
+                let result = async {
+                    match Entity::find()
+                        .filter(condition)
+                        .one(&txn)
+                        .await
+                        .map_err(Self::raise_error)?
+                    {
+                        Some(existing) => {
+                            self.prepare_entity_write(&txn, &model).await?;
+                            merge_and_update::<Entity, Error, Self>(&txn, existing, model).await
+                        }
+                        None => Err(Self::raise_error(ErrConflictFetchFailed)),
+                    }
+                }
+                .await;
+                conclude_transaction(txn, result, Self::raise_error).await
+            }
+            Err(error) => conclude_transaction(txn, Err(error), Self::raise_error).await,
+        }
     }
 }
 
