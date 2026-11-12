@@ -11,7 +11,7 @@ use cgp_orm::providers::conflict::StandardUniqueConflict;
 use cgp_orm::providers::identity::UniqueColumnsIdentity;
 use cgp_orm::providers::pagination::{DefaultPaginationPolicy, PrimaryKeyOrdering};
 use cgp_orm::providers::repository::{
-    DeleteEntityById, FindEntityById, FindEntityByIdentity, InsertEntity, InsertOrGetEntity,
+    DeleteEntityById, FindEntityByIdentity, GetEntityById, InsertEntity, InsertOrGetEntity,
     PaginateEntities, UpdateEntityById, UpsertEntity,
 };
 use cgp_orm::providers::service::{
@@ -51,8 +51,8 @@ cgp_preset! {
 // Parent is a full path so replaying the preset still resolves LookupStack.
 cgp_preset! {
     RepositoryCrudStack: cgp_orm::presets::stack::RepositoryLookupStack {
-        cgp_orm::components::EntityByIdFinderComponent:
-            FindEntityById,
+        cgp_orm::components::EntityByIdGetterComponent:
+            GetEntityById,
         cgp_orm::components::EntityByIdUpdaterComponent:
             UpdateEntityById,
         cgp_orm::components::EntityByIdDeleterComponent:

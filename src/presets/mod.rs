@@ -8,7 +8,7 @@
 //!   pagination, and the default policies (unique-columns identity,
 //!   primary-key ordering, 20/100 pagination, standard unique-conflict
 //!   detection, no-op write hook).
-//! - [`RepositoryCrudStack`] — lookup plus find / update / delete by id.
+//! - [`RepositoryCrudStack`] — lookup plus get / update / delete by id.
 //! - [`ResourceServiceStack`] — generic input/output service providers.
 //!
 //! Concrete applications compose the stacks explicitly:

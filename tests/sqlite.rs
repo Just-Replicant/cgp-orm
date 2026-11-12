@@ -12,11 +12,11 @@ use support::{
 };
 
 // ---------------------------------------------------------------------------
-// i32 primary key: find / insert / update / delete
+// i32 primary key: get / insert / update / delete
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn item_insert_find_update_delete_by_id() {
+async fn item_insert_get_update_delete_by_id() {
     let (app, _db) = setup_items().await;
 
     let created = app
@@ -31,10 +31,10 @@ async fn item_insert_find_update_delete_by_id() {
     assert_eq!(created.name, "alpha");
     assert_eq!(created.value, 1);
 
-    let found = app.find_by_id(created.id).await.unwrap();
+    let found = app.get_by_id(created.id).await.unwrap();
     assert_eq!(found.as_ref(), Some(&created));
 
-    let missing = app.find_by_id(created.id + 1_000).await.unwrap();
+    let missing = app.get_by_id(created.id + 1_000).await.unwrap();
     assert!(missing.is_none());
 
     let updated = app
@@ -61,7 +61,7 @@ async fn item_insert_find_update_delete_by_id() {
 
     assert!(app.delete_by_id(created.id).await.unwrap());
     assert!(!app.delete_by_id(created.id).await.unwrap());
-    assert!(app.find_by_id(created.id).await.unwrap().is_none());
+    assert!(app.get_by_id(created.id).await.unwrap().is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ async fn item_insert_find_update_delete_by_id() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn uuid_key_insert_find_update_delete() {
+async fn uuid_key_insert_get_update_delete() {
     let (app, _db) = setup_documents().await;
     let id = uuid::Uuid::new_v4();
 
@@ -83,7 +83,7 @@ async fn uuid_key_insert_find_update_delete() {
         .unwrap();
     assert_eq!(created.id, id);
 
-    let found = app.find_by_id(id).await.unwrap().expect("found");
+    let found = app.get_by_id(id).await.unwrap().expect("found");
     assert_eq!(found.title, "handbook");
 
     let updated = app
@@ -102,7 +102,7 @@ async fn uuid_key_insert_find_update_delete() {
     assert_eq!(updated.body, "v2");
 
     assert!(app.delete_by_id(id).await.unwrap());
-    assert!(app.find_by_id(id).await.unwrap().is_none());
+    assert!(app.get_by_id(id).await.unwrap().is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ async fn uuid_key_insert_find_update_delete() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn composite_key_insert_find_update_delete() {
+async fn composite_key_insert_get_update_delete() {
     let (app, _db) = setup_memberships().await;
 
     let created = app
@@ -126,14 +126,14 @@ async fn composite_key_insert_find_update_delete() {
 
     // The complete ValueType is a tuple — no From<i32>.
     let found = app
-        .find_by_id((7, 3))
+        .get_by_id((7, 3))
         .await
         .unwrap()
         .expect("found by composite id");
     assert_eq!(found.role, "admin");
 
-    assert!(app.find_by_id((7, 99)).await.unwrap().is_none());
-    assert!(app.find_by_id((99, 3)).await.unwrap().is_none());
+    assert!(app.get_by_id((7, 99)).await.unwrap().is_none());
+    assert!(app.get_by_id((99, 3)).await.unwrap().is_none());
 
     let updated = app
         .update_by_id(membership::ActiveModel {
@@ -466,3 +466,6 @@ async fn resource_service_uuid_and_composite() {
     let got = mems.get((4, 5)).await.unwrap().expect("composite get");
     assert_eq!(got.role, "r");
 }
+
+
+

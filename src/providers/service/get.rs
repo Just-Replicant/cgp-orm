@@ -1,7 +1,7 @@
 use cgp_fork::prelude::*;
 use sea_orm::{EntityTrait, IntoActiveModel};
 
-use crate::components::repository::CanFindEntityById;
+use crate::components::repository::CanGetEntityById;
 use crate::components::service::HasOutputType;
 use crate::components::service::{CanEncodeOutput, GetResource, GetResourceComponent};
 use crate::types::{HasEntityType, PrimaryKeyOf};
@@ -10,7 +10,7 @@ use crate::types::{HasEntityType, PrimaryKeyOf};
 pub struct GetResourceProvider;
 
 #[cgp_impl(GetResourceProvider)]
-#[uses(CanFindEntityById, CanEncodeOutput)]
+#[uses(CanGetEntityById, CanEncodeOutput)]
 #[use_type(HasEntityType.Entity, HasErrorType.Error, HasOutputType.Output)]
 impl GetResource
 where
@@ -21,7 +21,7 @@ where
     <Entity as EntityTrait>::Model: IntoActiveModel<<Entity as EntityTrait>::ActiveModel> + Send,
 {
     async fn get(&self, id: PrimaryKeyOf<Self>) -> Result<Option<Output>, Error> {
-        match self.find_by_id(id).await? {
+        match self.get_by_id(id).await? {
             Some(model) => Ok(Some(self.encode_output(model)?)),
             None => Ok(None),
         }

@@ -11,12 +11,12 @@ use crate::types::{
 };
 
 /// Look up a row by its complete SeaORM primary-key value.
-#[cgp_component(EntityByIdFinder)]
+#[cgp_component(EntityByIdGetter)]
 #[cgp_async(Send)]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]
-pub trait CanFindEntityById {
+pub trait CanGetEntityById {
     /// Fetch the model with this primary key, or `Ok(None)` if it does not exist.
-    async fn find_by_id(&self, id: PrimaryKeyOf<Self>) -> Result<Option<ModelOf<Self>>, Error>;
+    async fn get_by_id(&self, id: PrimaryKeyOf<Self>) -> Result<Option<ModelOf<Self>>, Error>;
 }
 
 /// Insert a new row. Unique-constraint violations are returned as errors.

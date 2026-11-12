@@ -19,9 +19,9 @@ pub use pagination::{
     PaginationPolicy, PaginationPolicyComponent,
 };
 pub use repository::{
-    CanDeleteEntityById, CanFindEntityById, CanFindEntityByIdentity, CanInsertEntity,
+    CanDeleteEntityById, CanFindEntityByIdentity, CanGetEntityById, CanInsertEntity,
     CanInsertOrGetEntity, CanPaginateEntities, CanUpdateEntityById, CanUpsertEntity,
-    EntityByIdDeleter, EntityByIdDeleterComponent, EntityByIdFinder, EntityByIdFinderComponent,
+    EntityByIdDeleter, EntityByIdDeleterComponent, EntityByIdGetter, EntityByIdGetterComponent,
     EntityByIdUpdater, EntityByIdUpdaterComponent, EntityIdentityFinder,
     EntityIdentityFinderComponent, EntityInsertOrGetter, EntityInsertOrGetterComponent,
     EntityInserter, EntityInserterComponent, EntityPaginator, EntityPaginatorComponent,

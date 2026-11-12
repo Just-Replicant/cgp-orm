@@ -18,7 +18,7 @@ pub use conflict::{
 pub use identity::UniqueColumnsIdentity;
 pub use pagination::{ConstPaginationPolicy, DefaultPaginationPolicy, PrimaryKeyOrdering};
 pub use repository::{
-    DeleteEntityById, FindEntityById, FindEntityByIdentity, InsertEntity, InsertOrGetEntity,
+    DeleteEntityById, FindEntityByIdentity, GetEntityById, InsertEntity, InsertOrGetEntity,
     PaginateEntities, UpdateEntityById, UpsertEntity,
 };
 pub use service::{
