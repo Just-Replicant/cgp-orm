@@ -5,8 +5,8 @@
 //!
 //! `cgp-orm` sits between a SeaORM entity and an application service. It does
 //! **not** depend on a transport stack or any application entity. Contexts
-//! choose policies (identity, pagination, ordering, conflict, transaction
-//! hooks, error mapping) by wiring providers through CGP presets.
+//! choose policies (identity, pagination, ordering, entity filter, conflict,
+//! transaction hooks, error mapping) by wiring providers through CGP presets.
 //!
 //! The design principle: **presets compose behavior, contexts choose policies,
 //! and macros do not own architecture.**
@@ -82,12 +82,16 @@
 //!
 //! Error maps are application policy and do not live here.
 //!
-//! # Cursor pagination
+//! # Pagination and filters
 //!
-//! Offset pagination through [`PageRequest`] is implemented now. Keyset/cursor
+//! Offset pagination through [`PageRequest`] is implemented now. The
+//! [`CanBuildEntityFilter`] component supplies the WHERE clause
+//! (default: no restriction). [`PageRequest::without_total`] skips
+//! `COUNT(*)` and leaves [`Page::total`] as `None`. Keyset/cursor
 //! pagination is a documented extension point — see
 //! [`pagination`] and `ARCHITECTURE.md` — and can be added later without
-//! changing the offset API.
+//! changing the offset API. Soft delete is an application filter, not a
+//! library deletion policy.
 
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]

@@ -63,9 +63,13 @@ pub type PrimaryKeyOf<C> =
 the first key. Helpers in `util`:
 
 - `primary_key_from_active_model` — reads **every** key column.
-- `set_primary_key_on_active_model` — writes every key column.
+- `set_primary_key_on_active_model` — writes every key column. A
+  `try_set` failure is a typed `PrimaryKeyWriteError::SetFailed`
+  (`ErrPrimaryKeySetFailed`), raised through `CanRaiseError`, not a
+  panic. The `expect("arity checked")` in `value_tuple_from_vec` is
+  unchanged: it sits behind a length match.
 - `merge_update` — copies `ActiveValue::Set` fields, **excluding all
-  primary-key columns**.
+  primary-key columns**. A `try_set` failure is `MergeUpdateError::Db`.
 - `is_primary_key_column` — membership test by identifier, not position.
 
 # Identity
@@ -140,6 +144,7 @@ flowchart TB
         l4["UniqueColumnsIdentity"]
         l5["PrimaryKeyOrdering"]
         l6["DefaultPaginationPolicy 20 / 100"]
+        l6b["NoEntityFilter (Condition::all)"]
         l7["StandardUniqueConflict"]
         l8["NoopPrepareEntityWrite"]
     end
@@ -183,21 +188,25 @@ The policy is a CGP component, not a hardcoded string match.
 
 | Provider | What it uses |
 | --- | --- |
-| `StandardUniqueConflict` (default) | `DbErr::sql_err()`, then `RecordNotInserted`, then multi-backend messages |
+| `StandardUniqueConflict` (default) | `DbErr::sql_err()`, then `RecordNotInserted`, then multi-backend messages. `RecordNotInserted` is a documented step; apps that never use `ON CONFLICT DO NOTHING` opt out by wiring `SqlErrUniqueConflict` or a backend policy. |
 | `SqlErrUniqueConflict` | `DbErr::sql_err()` only (needs a sqlx/rusqlite feature) |
 | `SqliteUniqueConflict` | `sql_err` + SQLite unique/PK phrases (not FK/CHECK) |
 | `PostgresUniqueConflict` | `sql_err` + `23505` / `unique violation` |
 | `MysqlUniqueConflict` | `sql_err` + `Duplicate entry` / `error 1062` |
 | `MessageUniqueConflict` | Multi-backend messages only |
-| `OrUniqueConflict<A, B>` | Disjunction of two policies |
+| `OrUniqueConflict<A, B>` | Disjunction of two policies. Wire the type directly as the provider (`UniqueConflictDetectorComponent: OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>`), not `UseDelegate<...>` |
 
 `DbErr::sql_err()` is the accurate, backend-agnostic path. It is
 feature-gated inside SeaORM: it returns `Some(UniqueConstraintViolation)`
 only when a `sqlx-*` or `rusqlite` feature is enabled (feature
 unification with the application crate is enough; this crate does not
-force those features). The message fallback is a conservative heuristic
-and is covered by unit tests for both positive phrases and
-foreign-key/check false positives.
+force those features, and it does not add an `sqlx-conflict` feature
+that would change the default). Dev-dependencies enable `sqlx-sqlite`,
+and `tests/sqlite.rs` asserts that a real unique violation makes
+`sql_err_is_unique` return `true`. The message fallback is therefore
+not the path the suite hits; a SeaORM regression cannot silently fall
+through. The SQLite message matcher requires `unique constraint failed`
+and does not accept the shorter token `unique constraint`.
 
 # Service layer
 
@@ -209,11 +218,24 @@ one shared DTO, or use distinct request and response types.
 `CanGetOrCreateEntity::get_or_create`, and encodes the model. The result
 reports whether the row was inserted or already existed.
 
-# Pagination and cursor extension
+# Pagination, filters, and cursor extension
 
-`PageRequest { page, size }` is 1-based and always policy-clamped.
-Ordering is required and defaults to every primary-key column,
-ascending.
+`PageRequest { page, size, include_total }` is 1-based and always
+policy-clamped. `include_total` defaults to `true`. Ordering is
+required and defaults to every primary-key column, ascending.
+
+`CanBuildEntityFilter` supplies the WHERE clause for `paginate` (both
+the page query and the `COUNT(*)`) and is also ANDed onto
+`find_by_identity`. The default, `NoEntityFilter`, returns
+`Condition::all()`, so existing contexts stay valid. This is the
+right answer to soft delete: the application supplies the filter, the
+library does not grow a `DeletionPolicy`. Tenant isolation and search
+use the same component.
+
+`Page::total` is `Option<u64>`. `PageRequest::without_total()` skips
+`COUNT(*)` and returns `total: None`. That is a breaking change for
+callers that treated `total` as `u64`. Cursor/keyset pagination is
+the milestone after the filter, and is still not implemented here.
 
 **Cursor pagination (not implemented).** A future
 
@@ -241,6 +263,11 @@ The following belong in an application crate, not here:
 - Entity names used as route segments
 - Hardcoded source-error lists (error maps are application policy)
 - Generated sibling contexts and a proc-macro that owns wiring
+- A library `DeletionPolicy`. Soft delete is an application
+  `CanBuildEntityFilter`.
+- An `sqlx-conflict` feature, or `TreatRecordNotInsertedAsConflict`.
+  Contexts choose policies; `RecordNotInserted` is a documented step of
+  `StandardUniqueConflict`.
 
 # Tests
 
@@ -252,6 +279,12 @@ The following belong in an application crate, not here:
 - `get_or_create` under a real unique-constraint conflict, including a repeat call that does not consume an id and does not run the write hook
 - `upsert` insert then update, with no second row
 - pagination with deterministic PK order and max-size clamping (never 5)
+- a default entity filter that returns every row, and a custom (tenant-like)
+  filter that restricts both page items and `total`
+- skipping `COUNT(*)` (`PageRequest::without_total`, `total: None`)
+- a real unique-constraint `DbErr` classified by `sql_err_is_unique`
+- `OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>` wired
+  directly as the provider
 - a failing write hook: the original error is returned and the row is
   rolled back
 
