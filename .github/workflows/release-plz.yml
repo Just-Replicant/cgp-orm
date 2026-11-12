@@ -1,0 +1,200 @@
+name: Release-plz
+
+# - `release-pr` runs on every push to main. It opens or updates one pull
+#   request with the next version and the changelog, when a feat, fix,
+#   perf, or breaking commit is present.
+# - `release` runs on that same push. It waits for the Tests workflow run for
+#   this exact commit, and publishes only when that run succeeded and the
+#   committed version is newer than crates.io. It then tags `v<version>` and
+#   creates the GitHub release. A red or cancelled Tests run publishes nothing.
+#   A manual `workflow_dispatch` runs the test suite itself first.
+#
+# Publishing uses crates.io trusted publishing. There is no
+# `CARGO_REGISTRY_TOKEN`: release-plz exchanges this job's OIDC token for a
+# short-lived crates.io token. `id-token: write` on the release job is required.
+# crates.io rejects trusted publishing for the `workflow_run` event, so this
+# job starts on `push` (or `workflow_dispatch`) and polls Tests itself.
+#
+# Before the first run:
+# - Actions → General → Workflow permissions: read and write.
+# - Allow GitHub Actions to create and approve pull requests.
+# - On crates.io, add a trusted publisher for `cgp-orm`: repository
+#   `Just-Replicant/cgp-orm`, workflow `release-plz.yml`. Trusted publishing
+#   cannot create a crate; publish once by hand, then trust this workflow.
+# - Recommended: a fine-grained `RELEASE_PLZ_TOKEN` with Contents and Pull
+#   requests read/write. The default `GITHUB_TOKEN` cannot start the Tests
+#   workflow on the release pull request. With the PAT, that pull request runs
+#   Tests; without it the release-pr job warns. Once the secret exists, set the
+#   repository variable `REQUIRE_RELEASE_PLZ_TOKEN` to `true` to make a missing
+#   token an error instead of a warning.
+#
+# The binary is pinned. This workflow does not use a third-party action.
+# The binary reads the forge token from `--git-token` (`GIT_TOKEN`). It does
+# not read `GITHUB_TOKEN`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+    # Publish a push to main only after Tests has passed for this commit, or an
+    # explicit manual dispatch (which runs the tests below first). `push` is
+    # required: crates.io will not issue a trusted-publishing token for
+    # `workflow_run`.
+    if: >-
+      ${{ github.repository_owner == 'Just-Replicant' &&
+        (github.event_name == 'workflow_dispatch' || github.event_name == 'push') }}
+    # Tests plus publish. The wait below is capped at 90 minutes.
+    timeout-minutes: 150
+    # One release at a time; a queued release waits rather than cancelling one
+    # that is publishing.
+    concurrency:
+      group: release-plz-release
+      cancel-in-progress: false
+    permissions:
+      actions: read # list the Tests workflow run for this commit
+      contents: write
+      pull-requests: read
+      id-token: write # crates.io trusted publishing (OIDC)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
+      # The Tests workflow starts on the same push. Poll its run for this SHA.
+      # A failed or cancelled run sets publish=false and the job stops there.
+      # Missing or still running past the deadline fails the job, so a release
+      # is not skipped silently.
+      - name: Wait for Tests on this commit
+        id: tests
+        if: ${{ success() && github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          sha="$GITHUB_SHA"
+          deadline=$((SECONDS + 90 * 60))
+          appear_deadline=$((SECONDS + 10 * 60))
+          query="repos/${GITHUB_REPOSITORY}/actions/workflows/tests.yml/runs?head_sha=${sha}&event=push&branch=main&per_page=20"
+
+          while (( SECONDS < deadline )); do
+            runs=$(gh api --jq '[.workflow_runs[] | {status, conclusion, html_url, created_at}]' "$query")
+            count=$(jq 'length' <<<"$runs")
+            count=${count:-0}
+            if (( count == 0 )); then
+              if (( SECONDS > appear_deadline )); then
+                echo "::error::No Tests workflow run appeared for $sha"
+                exit 1
+              fi
+              echo "Waiting for the Tests workflow to start for $sha"
+              sleep 20
+              continue
+            fi
+
+            # The newest run is the one that counts. An earlier success must
+            # not publish over a later failure, and a later rerun is waited out.
+            latest=$(jq -c 'sort_by(.created_at) | reverse | .[0]' <<<"$runs")
+            status=$(jq -r '.status' <<<"$latest")
+            conclusion=$(jq -r '.conclusion // ""' <<<"$latest")
+            echo "$status ${conclusion:--} $(jq -r '.html_url' <<<"$latest")"
+
+            case "$status" in
+              queued|in_progress|waiting|pending|requested)
+                echo "Tests still running for $sha"
+                sleep 30
+                ;;
+              completed)
+                if [[ "$conclusion" == "success" ]]; then
+                  echo "publish=true" >> "$GITHUB_OUTPUT"
+                  echo "Tests passed for $sha"
+                  exit 0
+                fi
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                echo "::notice::Tests concluded ${conclusion:-unknown} for $sha; not publishing"
+                exit 0
+                ;;
+              *)
+                echo "::error::Unexpected Tests status ${status} for $sha"
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "::error::Timed out waiting for Tests on $sha"
+          exit 1
+      - name: Install pinned toolchain
+        if: ${{ success() && (github.event_name == 'workflow_dispatch' || steps.tests.outputs.publish == 'true') }}
+        run: rustup toolchain install
+      - name: Install release-plz
+        if: ${{ success() && (github.event_name == 'workflow_dispatch' || steps.tests.outputs.publish == 'true') }}
+        run: |
+          tmpdir=$(mktemp -d)
+          curl -fsSL -o "$tmpdir/release-plz.tar.gz" https://github.com/release-plz/release-plz/releases/download/release-plz-v0.4.3/release-plz-x86_64-unknown-linux-gnu.tar.gz
+          echo "f4b0cc404cd9a58cd1b33f49e439bba65186773f63e323ea47f3ea57e557a3d3  $tmpdir/release-plz.tar.gz" | sha256sum -c -
+          tar -xzf "$tmpdir/release-plz.tar.gz" -C "$tmpdir"
+          install -m 755 "$tmpdir/release-plz" "${CARGO_HOME:-$HOME/.cargo}/bin/release-plz"
+          release-plz --version
+      # A push already waited for the full Tests workflow. A manual dispatch
+      # did not, so it runs the test suite here first.
+      - name: Test before a manual release
+        if: ${{ success() && github.event_name == 'workflow_dispatch' }}
+        run: cargo test --no-fail-fast
+      - name: Run release-plz release
+        if: ${{ success() && (github.event_name == 'workflow_dispatch' || steps.tests.outputs.publish == 'true') }}
+        run: release-plz release --git-token "$GIT_TOKEN"
+        env:
+          GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
+
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'Just-Replicant' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - name: Install release-plz
+        run: |
+          tmpdir=$(mktemp -d)
+          curl -fsSL -o "$tmpdir/release-plz.tar.gz" https://github.com/release-plz/release-plz/releases/download/release-plz-v0.4.3/release-plz-x86_64-unknown-linux-gnu.tar.gz
+          echo "f4b0cc404cd9a58cd1b33f49e439bba65186773f63e323ea47f3ea57e557a3d3  $tmpdir/release-plz.tar.gz" | sha256sum -c -
+          tar -xzf "$tmpdir/release-plz.tar.gz" -C "$tmpdir"
+          install -m 755 "$tmpdir/release-plz" "${CARGO_HOME:-$HOME/.cargo}/bin/release-plz"
+          release-plz --version
+      - name: Check for the release PR token
+        env:
+          HAS_PAT: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}
+          REQUIRE_PAT: ${{ vars.REQUIRE_RELEASE_PLZ_TOKEN == 'true' }}
+        run: |
+          if [ "$HAS_PAT" != "true" ]; then
+            msg="RELEASE_PLZ_TOKEN is not set, so the release PR will not trigger the Tests workflow. Publishing still waits for Tests on main."
+            if [ "$REQUIRE_PAT" = "true" ]; then
+              echo "::error::$msg"
+              exit 1
+            fi
+            echo "::warning::$msg"
+          fi
+      - name: Run release-plz release-pr
+        run: release-plz release-pr --git-token "$GIT_TOKEN"
+        env:
+          GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}

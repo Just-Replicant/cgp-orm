@@ -1,0 +1,50 @@
+# Single-crate publish for `cgp-orm`.
+#
+# release-plz opens a release PR when a matching conventional commit lands on
+# main, then publishes after Tests pass and the committed version is newer
+# than crates.io.
+
+[workspace]
+# Publish whenever the committed version is newer than crates.io (the release
+# job runs only after Tests passed on that commit), including when GitHub does
+# not associate that push with the release pull request.
+release_always = true
+repo_url = "https://github.com/Just-Replicant/cgp-orm"
+# A release PR is opened only when a commit since the last release matches.
+# Only user-visible changes cut a release: `feat`, `fix`, and `perf`. A
+# `refactor`, `test`, `docs`, `chore`, `style`, or `ci` commit stays on main
+# until a matching commit lands with it (it is still listed in that release's
+# changelog). A `!` on any type is breaking and also matches.
+release_commits = '^(feat|fix|perf)(\([^)]*\))?!?:|^\w+(\([^)]*\))?!:'
+git_release_enable = false
+git_tag_enable = false
+changelog_update = false
+publish_timeout = "30m"
+
+[changelog]
+header = """
+# Changelog
+
+"""
+protect_breaking_commits = true
+commit_parsers = [
+  { message = "^feat", group = "added" },
+  { message = "^fix", group = "fixed" },
+  { message = "^perf", group = "changed" },
+  { message = "^refactor", group = "changed" },
+  { message = "^doc", group = "documentation" },
+  { message = "^test", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^style", skip = true },
+  { message = "^.*", group = "other" },
+]
+
+[[package]]
+name = "cgp-orm"
+changelog_update = true
+changelog_path = "CHANGELOG.md"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
