@@ -394,13 +394,14 @@ async fn rollback_preserves_the_original_hook_error() {
 async fn resource_service_create_get_update_list_delete() {
     let (app, _db) = setup_items().await;
 
-    let created = app
+    let (created, outcome) = app
         .create(ItemInput {
             name: "svc".into(),
             value: 1,
         })
         .await
         .unwrap();
+    assert_eq!(outcome, InsertOutcome::Inserted);
     assert_eq!(created.name, "svc");
 
     let got = app.get(created.id).await.unwrap().expect("get");
@@ -428,17 +429,17 @@ async fn resource_service_create_get_update_list_delete() {
 }
 
 #[tokio::test]
-async fn resource_service_get_or_create() {
+async fn resource_service_create_returns_existing() {
     let (app, _db) = setup_items().await;
     let input = ItemInput {
         name: "once".into(),
         value: 1,
     };
-    let (first, outcome) = app.get_or_create(input.clone()).await.unwrap();
+    let (first, outcome) = app.create(input).await.unwrap();
     assert_eq!(outcome, InsertOutcome::Inserted);
 
     let (second, outcome) = app
-        .get_or_create(ItemInput {
+        .create(ItemInput {
             name: "once".into(),
             value: 99,
         })
@@ -453,7 +454,7 @@ async fn resource_service_get_or_create() {
 async fn resource_service_uuid_and_composite() {
     let (docs, _) = setup_documents().await;
     let id = uuid::Uuid::new_v4();
-    let created = docs
+    let (created, outcome) = docs
         .create(DocumentInput {
             id,
             title: "t".into(),
@@ -461,11 +462,12 @@ async fn resource_service_uuid_and_composite() {
         })
         .await
         .unwrap();
+    assert_eq!(outcome, InsertOutcome::Inserted);
     assert_eq!(created.id, id);
     assert_eq!(docs.get(id).await.unwrap().unwrap().title, "t");
 
     let (mems, _) = setup_memberships().await;
-    let created = mems
+    let (created, outcome) = mems
         .create(MembershipInput {
             user_id: 4,
             group_id: 5,
@@ -473,6 +475,7 @@ async fn resource_service_uuid_and_composite() {
         })
         .await
         .unwrap();
+    assert_eq!(outcome, InsertOutcome::Inserted);
     assert_eq!((created.user_id, created.group_id), (4, 5));
     let got = mems.get((4, 5)).await.unwrap().expect("composite get");
     assert_eq!(got.role, "r");

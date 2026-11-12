@@ -11,7 +11,7 @@ use cgp_fork::prelude::*;
 use crate::pagination::{Page, PageRequest};
 use crate::types::{ActiveModelOf, HasEntityType, InsertOutcome, ModelOf, PrimaryKeyOf};
 
-/// The payload accepted by [`CanCreateResource`] and [`CanGetOrCreateResource`].
+/// The payload accepted by [`CanCreateResource`].
 #[cgp_type]
 pub trait HasCreateInputType {
     /// Application input type for create.
@@ -68,25 +68,16 @@ pub trait CanEncodeOutput {
     fn encode_output(&self, model: ModelOf<Self>) -> Result<Output, Error>;
 }
 
-/// Create a new resource (`insert`). Unique conflicts are errors.
+/// Create a resource or return the existing one.
+///
+/// Decodes `input`, delegates to [`crate::components::CanGetOrCreateEntity::get_or_create`],
+/// and encodes the resulting model.
 #[cgp_component(CreateResource)]
 #[cgp_async(Send)]
 #[use_type(HasErrorType.Error, HasCreateInputType.CreateInput, HasOutputType.Output)]
 pub trait CanCreateResource {
-    /// Decode, insert, and encode a new resource.
-    async fn create(&self, input: CreateInput) -> Result<Output, Error>;
-}
-
-/// Create a resource or return the existing one (`get_or_create`).
-///
-/// This is the conflict-safe counterpart of [`CanCreateResource`] and the
-/// correct replacement for a generic `find_or_insert` used as "create".
-#[cgp_component(GetOrCreateResource)]
-#[cgp_async(Send)]
-#[use_type(HasErrorType.Error, HasCreateInputType.CreateInput, HasOutputType.Output)]
-pub trait CanGetOrCreateResource {
-    /// Decode, insert-or-get, and encode.
-    async fn get_or_create(&self, input: CreateInput) -> Result<(Output, InsertOutcome), Error>;
+    /// Decode, get-or-create at the repository layer, and encode.
+    async fn create(&self, input: CreateInput) -> Result<(Output, InsertOutcome), Error>;
 }
 
 /// Update a resource by primary key.

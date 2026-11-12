@@ -28,11 +28,11 @@ pub use repository::{
 };
 pub use service::{
     ApplyUpdateInput, ApplyUpdateInputComponent, CanApplyUpdateInput, CanCreateResource,
-    CanDecodeCreateInput, CanDeleteResource, CanEncodeOutput, CanGetOrCreateResource,
-    CanGetResource, CanListResources, CanUpdateResource, CreateResource, CreateResourceComponent,
-    DecodeCreateInput, DecodeCreateInputComponent, DeleteResource, DeleteResourceComponent,
-    EncodeOutput, EncodeOutputComponent, GetOrCreateResource, GetOrCreateResourceComponent,
-    GetResource, GetResourceComponent, HasCreateInputType, HasOutputType, HasUpdateInputType,
+    CanDecodeCreateInput, CanDeleteResource, CanEncodeOutput, CanGetResource, CanListResources,
+    CanUpdateResource, CreateResource, CreateResourceComponent, DecodeCreateInput,
+    DecodeCreateInputComponent, DeleteResource, DeleteResourceComponent, EncodeOutput,
+    EncodeOutputComponent, GetResource, GetResourceComponent, HasCreateInputType, HasOutputType,
+    HasUpdateInputType,
     ListResources, ListResourcesComponent, UpdateResource, UpdateResourceComponent,
 };
 pub use transaction::{CanPrepareEntityWrite, EntityWritePreparer, EntityWritePreparerComponent};

@@ -15,8 +15,8 @@ use cgp_orm::providers::repository::{
     PaginateEntities, UpdateEntityById, UpsertEntity,
 };
 use cgp_orm::providers::service::{
-    CreateResourceProvider, DeleteResourceProvider, GetOrCreateResourceProvider,
-    GetResourceProvider, ListResourcesProvider, UpdateResourceProvider,
+    CreateResourceProvider, DeleteResourceProvider, GetResourceProvider, ListResourcesProvider,
+    UpdateResourceProvider,
 };
 use cgp_orm::providers::transaction::NoopPrepareEntityWrite;
 
@@ -67,8 +67,6 @@ cgp_preset! {
     ResourceServiceStack {
         cgp_orm::components::CreateResourceComponent:
             CreateResourceProvider,
-        cgp_orm::components::GetOrCreateResourceComponent:
-            GetOrCreateResourceProvider,
         cgp_orm::components::UpdateResourceComponent:
             UpdateResourceProvider,
         cgp_orm::components::GetResourceComponent:

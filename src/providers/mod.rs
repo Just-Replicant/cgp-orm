@@ -22,7 +22,7 @@ pub use repository::{
     PaginateEntities, UpdateEntityById, UpsertEntity,
 };
 pub use service::{
-    CreateResourceProvider, DeleteResourceProvider, GetOrCreateResourceProvider,
-    GetResourceProvider, ListResourcesProvider, UpdateResourceProvider,
+    CreateResourceProvider, DeleteResourceProvider, GetResourceProvider, ListResourcesProvider,
+    UpdateResourceProvider,
 };
 pub use transaction::NoopPrepareEntityWrite;
