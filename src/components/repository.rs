@@ -53,6 +53,8 @@ pub trait CanDeleteEntityById {
 }
 
 /// Look up a row by the context's identity policy (not necessarily the PK).
+///
+/// The default provider also applies [`crate::components::CanBuildEntityFilter`].
 #[cgp_component(EntityIdentityFinder)]
 #[cgp_async(Send)]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]
@@ -98,7 +100,10 @@ pub trait CanUpsertEntity {
 ///
 /// The page size is taken from [`PageRequest`] and clamped by
 /// [`crate::components::HasPaginationPolicy`]. An ordering policy is
-/// required; see [`crate::components::CanBuildEntityOrder`].
+/// required; see [`crate::components::CanBuildEntityOrder`]. The WHERE
+/// clause comes from [`crate::components::CanBuildEntityFilter`] (default:
+/// no restriction). Set [`PageRequest::include_total`] to `false` to skip
+/// `COUNT(*)`; [`Page::total`] is then `None`.
 #[cgp_component(EntityPaginator)]
 #[cgp_async(Send)]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]

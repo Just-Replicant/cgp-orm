@@ -97,7 +97,10 @@ impl UniqueConflictDetector {
 /// 1. [`DbErr::sql_err`] is `UniqueConstraintViolation` (structured,
 ///    backend-accurate when sqlx/rusqlite is enabled).
 /// 2. [`DbErr::RecordNotInserted`] — SeaORM raises this when an insert
-///    inserts no rows, commonly `ON CONFLICT DO NOTHING`.
+///    inserts no rows, commonly `ON CONFLICT DO NOTHING`. This is a
+///    documented step of this policy; applications that never use
+///    `ON CONFLICT DO NOTHING` opt out by wiring [`SqlErrUniqueConflict`]
+///    or a backend-specific policy instead of this default.
 /// 3. [`MessageUniqueConflict`] — conservative multi-backend phrases.
 ///
 /// Replace this on the application preset to opt into a tighter policy.
@@ -112,13 +115,35 @@ impl UniqueConflictDetector {
 
 /// Disjunction of two conflict policies: matches if either `A` or `B` does.
 ///
-/// ```ignore
-/// UniqueConflictDetectorComponent:
-///     UseDelegate<OrUniqueConflict<SqlErrUniqueConflict, SqliteUniqueConflict>>,
-/// ```
+/// The [`cgp_provider`] impl **is** the provider. Wire the type directly
+/// on `UniqueConflictDetectorComponent` — not
+/// `UseDelegate<OrUniqueConflict<...>>`.
 ///
-/// The [`cgp_provider`] impl is used directly; wire it as the provider
-/// type on the component (see `ARCHITECTURE.md`).
+/// ```
+/// use cgp_orm::components::UniqueConflictDetector;
+/// use cgp_orm::providers::conflict::{
+///     MessageUniqueConflict, OrUniqueConflict, SqlErrUniqueConflict,
+/// };
+/// use sea_orm::DbErr;
+///
+/// // In a `cgp_preset!` or `delegate_components!` table:
+/// //
+/// //     UniqueConflictDetectorComponent:
+/// //         OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>,
+///
+/// struct Ctx;
+/// type Policy = OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>;
+///
+/// let conflict = DbErr::Custom("UNIQUE constraint failed: items.name".into());
+/// assert!(Policy::is_unique_conflict(&Ctx, &conflict));
+///
+/// let other = DbErr::Custom("FOREIGN KEY constraint failed".into());
+/// assert!(!Policy::is_unique_conflict(&Ctx, &other));
+///
+/// // This pair does not treat RecordNotInserted as a conflict;
+/// // only StandardUniqueConflict includes that step.
+/// assert!(!Policy::is_unique_conflict(&Ctx, &DbErr::RecordNotInserted));
+/// ```
 pub struct OrUniqueConflict<A, B>(PhantomData<(A, B)>);
 
 #[cgp_provider(UniqueConflictDetectorComponent)]
@@ -181,13 +206,17 @@ pub fn mysql_unique_message(message: &str) -> bool {
 
 /// SQLite unique- and primary-key-violation phrases.
 ///
-/// Deliberately does **not** match the bare string `constraint failed`,
-/// which also appears in foreign-key and check-constraint errors.
+/// Matches the documented phrases (`unique constraint failed`,
+/// `primary key constraint failed`, `SQLITE_CONSTRAINT_UNIQUE`,
+/// `SQLITE_CONSTRAINT_PRIMARYKEY`). The shorter token `unique constraint`
+/// is not matched on its own: it is a false-positive risk, and
+/// `unique constraint failed` already covers SQLite's documented message.
+/// The bare string `constraint failed` is also rejected, because it
+/// appears in foreign-key and check-constraint errors.
 #[must_use]
 pub fn sqlite_unique_message(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
     lower.contains("unique constraint failed")
-        || lower.contains("unique constraint")
         || lower.contains("primary key constraint failed")
         || lower.contains("sqlite_constraint_unique")
         || lower.contains("sqlite_constraint_primarykey")
@@ -261,5 +290,47 @@ mod tests {
         assert!(is_unique_constraint_violation(&err));
         let err = DbErr::Custom("CHECK constraint failed: qty".into());
         assert!(!is_unique_constraint_violation(&err));
+    }
+
+    #[test]
+    fn sqlite_does_not_match_bare_unique_constraint() {
+        assert!(!sqlite_unique_message("unique constraint"));
+        assert!(!sqlite_unique_message(
+            "a unique constraint exists on items.name"
+        ));
+        // The documented phrase still matches.
+        assert!(sqlite_unique_message(
+            "UNIQUE constraint failed: items.name"
+        ));
+        assert!(!message_is_unique("unique constraint"));
+    }
+
+    #[test]
+    fn or_unique_conflict_composes_sql_err_with_message() {
+        struct Ctx;
+        type Policy = OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>;
+
+        // Message policy covers a unique phrase when sql_err is absent.
+        let message_only = DbErr::Custom("UNIQUE constraint failed: items.name".into());
+        assert!(
+            Policy::is_unique_conflict(&Ctx, &message_only),
+            "OrUniqueConflict should match via the message policy"
+        );
+        assert!(!SqlErrUniqueConflict::is_unique_conflict(
+            &Ctx,
+            &message_only
+        ));
+        assert!(MessageUniqueConflict::is_unique_conflict(
+            &Ctx,
+            &message_only
+        ));
+
+        // Neither half treats RecordNotInserted as a conflict.
+        assert!(!Policy::is_unique_conflict(&Ctx, &DbErr::RecordNotInserted));
+        assert!(is_unique_constraint_violation(&DbErr::RecordNotInserted));
+
+        // Foreign-key messages are still rejected.
+        let fk = DbErr::Custom("FOREIGN KEY constraint failed".into());
+        assert!(!Policy::is_unique_conflict(&Ctx, &fk));
     }
 }

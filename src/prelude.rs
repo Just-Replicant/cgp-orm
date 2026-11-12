@@ -4,6 +4,7 @@ pub use cgp_fork::prelude::*;
 
 pub use crate::accessors::{HasDbConn, HasUniqueColumns};
 pub use crate::components::conflict::CanDetectUniqueConflict;
+pub use crate::components::filter::CanBuildEntityFilter;
 pub use crate::components::identity::CanBuildIdentityCondition;
 pub use crate::components::pagination::{CanBuildEntityOrder, HasPaginationPolicy};
 pub use crate::components::repository::{
@@ -18,8 +19,8 @@ pub use crate::components::service::{
 pub use crate::components::transaction::CanPrepareEntityWrite;
 pub use crate::error::{
     ErrConflictFetchFailed, ErrEntityNotFound, ErrIdentityEmpty, ErrIdentityFieldUnset,
-    ErrMissingOrdering, ErrMissingPrimaryKey, ErrPrimaryKeyUnset, ErrUniqueConflict,
-    ErrUnsupportedKeyArity,
+    ErrMissingOrdering, ErrMissingPrimaryKey, ErrPrimaryKeySetFailed, ErrPrimaryKeyUnset,
+    ErrUniqueConflict, ErrUnsupportedKeyArity,
 };
 pub use crate::pagination::{Page, PageRequest, ResolvedPage};
 pub use crate::presets::{RepositoryCrudStack, RepositoryLookupStack, ResourceServiceStack};

@@ -9,6 +9,7 @@ use cgp_fork::core::error::{
 use cgp_fork::extra::error::{RaiseFrom, RaiseInfallible, ReturnError};
 use cgp_fork::prelude::*;
 use cgp_orm::accessors::{UniqueColumnsGetter, UniqueColumnsGetterComponent};
+use cgp_orm::components::filter::{EntityFilterBuilder, EntityFilterBuilderComponent};
 use cgp_orm::components::service::{
     ApplyUpdateInput, ApplyUpdateInputComponent, DecodeCreateInput, DecodeCreateInputComponent,
     EncodeOutput, EncodeOutputComponent, HasCreateInputType, HasOutputType, HasUpdateInputType,
@@ -16,15 +17,16 @@ use cgp_orm::components::service::{
 use cgp_orm::components::transaction::{EntityWritePreparer, EntityWritePreparerComponent};
 use cgp_orm::error::{
     ErrConflictFetchFailed, ErrEntityNotFound, ErrIdentityEmpty, ErrIdentityFieldUnset,
-    ErrMissingOrdering, ErrMissingPrimaryKey, ErrPrimaryKeyUnset, ErrUniqueConflict,
-    ErrUnsupportedKeyArity,
+    ErrMissingOrdering, ErrMissingPrimaryKey, ErrPrimaryKeySetFailed, ErrPrimaryKeyUnset,
+    ErrUniqueConflict, ErrUnsupportedKeyArity,
 };
 use cgp_orm::presets::{RepositoryCrudStack, ResourceServiceStack};
 use cgp_orm::providers::ConstPaginationPolicy;
+use cgp_orm::providers::conflict::{MessageUniqueConflict, OrUniqueConflict, SqlErrUniqueConflict};
 use cgp_orm::types::HasEntityType;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, EntityTrait, NotSet,
-    Schema, Set,
+    ColumnTrait, Condition, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, NotSet, Schema, Set,
 };
 use thiserror::Error;
 
@@ -53,6 +55,7 @@ delegate_components! {
             HookFailed,
             ErrIdentityEmpty,
             ErrMissingPrimaryKey,
+            ErrPrimaryKeySetFailed,
             ErrUnsupportedKeyArity,
             ErrMissingOrdering,
             ErrConflictFetchFailed,
@@ -464,6 +467,59 @@ delegate_components! {
     FailingItemApp {
         preset ItemAppPreset,
         cgp_orm::components::EntityWritePreparerComponent: FailingPrepare,
+    }
+}
+
+#[derive(HasField, Clone)]
+pub struct FilteredItemApp {
+    pub db_conn: DatabaseConnection,
+}
+
+impl FilteredItemApp {
+    pub fn new(db_conn: DatabaseConnection) -> Self {
+        Self { db_conn }
+    }
+}
+
+/// Restricts item queries to a single `value`, standing in for a tenant id
+/// (or a soft-delete / search predicate). The library does not ship a
+/// `DeletionPolicy`; the application supplies this filter.
+pub struct ItemValueFilter<const VALUE: i32>;
+
+#[cgp_impl(ItemValueFilter<VALUE>)]
+#[use_type(HasEntityType.{Entity = item::Entity}, HasErrorType.Error)]
+impl<const VALUE: i32> EntityFilterBuilder {
+    fn entity_filter(&self) -> Result<Condition, Error> {
+        Ok(Condition::all().add(item::Column::Value.eq(VALUE)))
+    }
+}
+
+delegate_components! {
+    #[unchecked]
+    FilteredItemApp {
+        preset ItemAppPreset,
+        cgp_orm::components::EntityFilterBuilderComponent: ItemValueFilter<1>,
+    }
+}
+
+/// Wires [`OrUniqueConflict`] directly as the provider (not `UseDelegate`).
+#[derive(HasField, Clone)]
+pub struct SqlErrOrMessageItemApp {
+    pub db_conn: DatabaseConnection,
+}
+
+impl SqlErrOrMessageItemApp {
+    pub fn new(db_conn: DatabaseConnection) -> Self {
+        Self { db_conn }
+    }
+}
+
+delegate_components! {
+    #[unchecked]
+    SqlErrOrMessageItemApp {
+        preset ItemAppPreset,
+        cgp_orm::components::UniqueConflictDetectorComponent:
+            OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>,
     }
 }
 

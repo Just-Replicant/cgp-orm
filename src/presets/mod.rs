@@ -6,8 +6,8 @@
 //!
 //! - [`RepositoryLookupStack`] — identity, insert, get-or-create, upsert,
 //!   pagination, and the default policies (unique-columns identity,
-//!   primary-key ordering, 20/100 pagination, standard unique-conflict
-//!   detection, no-op write hook).
+//!   primary-key ordering, 20/100 pagination, unrestricted entity filter,
+//!   standard unique-conflict detection, no-op write hook).
 //! - [`RepositoryCrudStack`] — lookup plus get / update / delete by id.
 //! - [`ResourceServiceStack`] — generic input/output service providers.
 //!

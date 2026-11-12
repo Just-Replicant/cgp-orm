@@ -3,12 +3,14 @@
 mod support;
 
 use cgp_orm::prelude::*;
-use cgp_orm::util::merge_update;
-use sea_orm::{EntityTrait, NotSet, Set, TryIntoModel};
+use cgp_orm::providers::sql_err_is_unique;
+use cgp_orm::util::{merge_update, set_primary_key_on_active_model};
+use sea_orm::{ActiveModelTrait, EntityTrait, NotSet, Set, TryIntoModel};
 use support::entities::{document, item, membership};
 use support::{
-    DocumentInput, FailingItemApp, ItemInput, MembershipInput, TightPageItemApp, create_table,
-    setup_documents, setup_items, setup_memberships,
+    DocumentInput, FailingItemApp, FilteredItemApp, ItemInput, MembershipInput,
+    SqlErrOrMessageItemApp, TightPageItemApp, create_table, setup_documents, setup_items,
+    setup_memberships,
 };
 
 // ---------------------------------------------------------------------------
@@ -296,7 +298,7 @@ async fn upsert_inserts_then_updates() {
     assert_eq!(updated.value, 8);
 
     let page = app.paginate(PageRequest::new(1, 10)).await.unwrap();
-    assert_eq!(page.total, 1, "upsert must not insert a second row");
+    assert_eq!(page.total, Some(1), "upsert must not insert a second row");
 
     let (other, outcome) = app
         .upsert(item::ActiveModel {
@@ -335,7 +337,7 @@ async fn pagination_is_deterministic_and_clamps_size() {
     let page = app.paginate(PageRequest::new(1, 3)).await.unwrap();
     assert_eq!(page.size, 3);
     assert_eq!(page.page, 1);
-    assert_eq!(page.total, 10);
+    assert_eq!(page.total, Some(10));
     assert_eq!(page.items.len(), 3);
     let ids: Vec<i32> = page.items.iter().map(|m| m.id).collect();
     let mut sorted = ids.clone();
@@ -359,7 +361,7 @@ async fn pagination_is_deterministic_and_clamps_size() {
     assert_eq!(clamped.size, 3);
     assert_ne!(clamped.size, 5);
     assert_eq!(clamped.items.len(), 3);
-    assert_eq!(clamped.total, 10);
+    assert_eq!(clamped.total, Some(10));
 
     let defaulted = tight.paginate(PageRequest::first()).await.unwrap();
     assert_eq!(
@@ -465,7 +467,7 @@ async fn resource_service_create_get_update_list_delete() {
     assert_eq!(updated.value, 9);
 
     let page = app.list(PageRequest::new(1, 10)).await.unwrap();
-    assert_eq!(page.total, 1);
+    assert_eq!(page.total, Some(1));
     assert_eq!(page.items[0].value, 9);
 
     assert!(app.delete(created.id).await.unwrap());
@@ -523,4 +525,248 @@ async fn resource_service_uuid_and_composite() {
     assert_eq!((created.user_id, created.group_id), (4, 5));
     let got = mems.get((4, 5)).await.unwrap().expect("composite get");
     assert_eq!(got.role, "r");
+}
+
+// ---------------------------------------------------------------------------
+// Structured unique-conflict classification (sql_err)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn unique_violation_is_classified_by_sql_err() {
+    let (app, db) = setup_items().await;
+
+    app.insert(item::ActiveModel {
+        id: NotSet,
+        name: Set("shared".into()),
+        value: Set(1),
+    })
+    .await
+    .unwrap();
+
+    // A raw SeaORM insert yields the DbErr that StandardUniqueConflict
+    // classifies first via DbErr::sql_err(). Dev-dependencies enable
+    // sqlx-sqlite, so this must not fall through to the message matcher.
+    let raw = item::ActiveModel {
+        id: NotSet,
+        name: Set("shared".into()),
+        value: Set(99),
+    }
+    .insert(&db)
+    .await
+    .expect_err("second insert must hit the unique name constraint");
+
+    assert!(
+        sql_err_is_unique(&raw),
+        "a real SQLite unique failure must make sql_err_is_unique return true; \
+         got {raw:?}. A SeaORM regression must not silently fall through to \
+         the message fallback on the path this suite hits."
+    );
+
+    // The repository `insert` path raises the same DbErr.
+    let wrapped = app
+        .insert(item::ActiveModel {
+            id: NotSet,
+            name: Set("shared".into()),
+            value: Set(99),
+        })
+        .await
+        .expect_err("insert must not swallow unique conflicts");
+    let db_err = wrapped
+        .downcast_ref::<sea_orm::DbErr>()
+        .expect("insert raises a SeaORM DbErr through the error map");
+    assert!(
+        sql_err_is_unique(db_err),
+        "the repository insert path must surface the same structured classifier; \
+         got {db_err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// OrUniqueConflict wiring (SqlErr + message, not UseDelegate)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn or_unique_conflict_sql_err_and_message_handles_real_conflict() {
+    let db = support::connect().await;
+    create_table(&db, item::Entity).await;
+    let app = SqlErrOrMessageItemApp::new(db);
+
+    let (first, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        item::ActiveModel {
+            id: NotSet,
+            name: Set("shared".into()),
+            value: Set(1),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome, InsertOutcome::Inserted);
+
+    let (second, outcome) = CanGetOrCreateEntity::get_or_create(
+        &app,
+        item::ActiveModel {
+            id: NotSet,
+            name: Set("shared".into()),
+            value: Set(99),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome, InsertOutcome::Existing);
+    assert_eq!(second.id, first.id);
+    assert_eq!(second.value, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Entity filter (tenant-like) and optional COUNT(*)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn default_entity_filter_returns_all_rows() {
+    let (app, _db) = setup_items().await;
+    for i in 0..4 {
+        app.insert(item::ActiveModel {
+            id: NotSet,
+            name: Set(format!("n{i}")),
+            value: Set(i),
+        })
+        .await
+        .unwrap();
+    }
+
+    let page = app.paginate(PageRequest::new(1, 10)).await.unwrap();
+    assert_eq!(page.total, Some(4), "NoEntityFilter must not hide rows");
+    assert_eq!(page.items.len(), 4);
+}
+
+#[tokio::test]
+async fn custom_entity_filter_restricts_paginate_and_identity() {
+    let (app, db) = setup_items().await;
+
+    app.insert(item::ActiveModel {
+        id: NotSet,
+        name: Set("tenant-1".into()),
+        value: Set(1),
+    })
+    .await
+    .unwrap();
+    app.insert(item::ActiveModel {
+        id: NotSet,
+        name: Set("tenant-2".into()),
+        value: Set(2),
+    })
+    .await
+    .unwrap();
+    app.insert(item::ActiveModel {
+        id: NotSet,
+        name: Set("tenant-1-b".into()),
+        value: Set(1),
+    })
+    .await
+    .unwrap();
+
+    // Unfiltered context still sees every row.
+    let all = app.paginate(PageRequest::new(1, 10)).await.unwrap();
+    assert_eq!(all.total, Some(3));
+    assert_eq!(all.items.len(), 3);
+
+    // `value = 1` stands in for a tenant id (or a soft-delete predicate).
+    let filtered = FilteredItemApp::new(db);
+    let page = filtered.paginate(PageRequest::new(1, 10)).await.unwrap();
+    assert_eq!(
+        page.total,
+        Some(2),
+        "COUNT(*) must use the same entity filter as the page query"
+    );
+    let names: Vec<&str> = page.items.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, vec!["tenant-1", "tenant-1-b"]);
+    assert!(page.items.iter().all(|m| m.value == 1));
+
+    // Identity find consults the same filter.
+    let hit = filtered
+        .find_by_identity(&item::ActiveModel {
+            id: NotSet,
+            name: Set("tenant-1".into()),
+            value: NotSet,
+        })
+        .await
+        .unwrap();
+    assert_eq!(hit.unwrap().name, "tenant-1");
+
+    let missed = filtered
+        .find_by_identity(&item::ActiveModel {
+            id: NotSet,
+            name: Set("tenant-2".into()),
+            value: NotSet,
+        })
+        .await
+        .unwrap();
+    assert!(
+        missed.is_none(),
+        "a row excluded by the entity filter must not be found by identity"
+    );
+}
+
+#[tokio::test]
+async fn paginate_can_skip_the_total_count() {
+    let (app, _db) = setup_items().await;
+    for i in 0..5 {
+        app.insert(item::ActiveModel {
+            id: NotSet,
+            name: Set(format!("n{i}")),
+            value: Set(i),
+        })
+        .await
+        .unwrap();
+    }
+
+    let counted = app.paginate(PageRequest::new(1, 3)).await.unwrap();
+    assert_eq!(counted.total, Some(5));
+    assert_eq!(counted.items.len(), 3);
+    assert_eq!(counted.has_next(), Some(true));
+    assert_eq!(counted.total_pages(), Some(2));
+
+    let skipped = app
+        .paginate(PageRequest::new(1, 3).without_total())
+        .await
+        .unwrap();
+    assert_eq!(skipped.total, None, "COUNT(*) must be skipped");
+    assert_eq!(skipped.items.len(), 3);
+    assert_eq!(skipped.page, 1);
+    assert_eq!(skipped.size, 3);
+    assert_eq!(skipped.has_next(), None);
+    assert_eq!(skipped.total_pages(), None);
+    assert!(
+        skipped.maybe_has_next(),
+        "a full page without a total is a hint that another page may exist"
+    );
+
+    let last = app
+        .paginate(PageRequest::new(2, 3).without_total())
+        .await
+        .unwrap();
+    assert_eq!(last.total, None);
+    assert_eq!(last.items.len(), 2);
+    assert!(!last.maybe_has_next());
+}
+
+#[test]
+fn set_primary_key_writes_every_column_without_panicking() {
+    let mut model = item::ActiveModel {
+        id: NotSet,
+        name: NotSet,
+        value: NotSet,
+    };
+    set_primary_key_on_active_model::<item::Entity>(&mut model, 7).unwrap();
+    assert_eq!(model.id, Set(7));
+
+    let mut membership = membership::ActiveModel {
+        user_id: NotSet,
+        group_id: NotSet,
+        role: NotSet,
+    };
+    set_primary_key_on_active_model::<membership::Entity>(&mut membership, (4, 5)).unwrap();
+    assert_eq!(membership.user_id, Set(4));
+    assert_eq!(membership.group_id, Set(5));
 }
