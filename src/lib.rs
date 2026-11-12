@@ -19,7 +19,7 @@
 //! pub type PrimaryKeyOf<C> =
 //!     <<<C as HasEntityType>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType;
 //!
-//! async fn find_by_id(&self, id: PrimaryKeyOf<Self>) -> Result<Option<ModelOf<Self>>, Error>;
+//! async fn get_by_id(&self, id: PrimaryKeyOf<Self>) -> Result<Option<ModelOf<Self>>, Error>;
 //! async fn delete_by_id(&self, id: PrimaryKeyOf<Self>) -> Result<bool, Error>;
 //! ```
 //!
@@ -30,15 +30,15 @@
 //! # Repository versus service
 //!
 //! The repository layer talks SeaORM models:
-//! [`CanFindEntityById`], [`CanInsertEntity`], [`CanUpdateEntityById`],
+//! [`CanGetEntityById`], [`CanInsertEntity`], [`CanUpdateEntityById`],
 //! [`CanDeleteEntityById`], [`CanFindEntityByIdentity`], [`CanPaginateEntities`],
-//! [`CanInsertOrGetEntity`], and [`CanUpsertEntity`].
+//! [`CanGetOrCreateEntity`], and [`CanUpsertEntity`].
 //!
 //! The service layer talks context-chosen input and output types
 //! ([`HasCreateInputType`], [`HasUpdateInputType`], [`HasOutputType`]) via
 //! [`CanDecodeCreateInput`], [`CanApplyUpdateInput`], [`CanEncodeOutput`],
-//! [`CanCreateResource`], [`CanUpdateResource`], [`CanGetResource`],
-//! [`CanListResources`], and [`CanDeleteResource`].
+//! [`CanCreateResource`], [`CanUpdateResource`],
+//! [`CanGetResource`], [`CanListResources`], and [`CanDeleteResource`].
 //!
 //! # Write semantics
 //!
@@ -47,20 +47,23 @@
 //!
 //! - [`CanInsertEntity::insert`] — insert, fail on unique conflict.
 //! - [`CanFindEntityByIdentity::find_by_identity`] — look up by the identity policy.
-//! - [`CanInsertOrGetEntity::insert_or_get`] — insert, and on a unique-constraint
-//!   conflict fetch the existing row by identity. This relies on a **database
+//! - [`CanGetOrCreateEntity::get_or_create`] — return the row for this identity,
+//!   inserting only when it is absent. A concurrent unique-constraint conflict
+//!   rolls back and fetches the existing row. This relies on a **database
 //!   unique constraint**; a transaction around find-then-insert does not
 //!   prevent concurrent duplicates by itself.
-//! - [`CanUpsertEntity::upsert`] — insert or merge-update the existing row.
+//! - [`CanUpsertEntity::upsert`] — merge-update the existing row, or insert when
+//!   it is absent. A concurrent unique conflict is merged on a clean
+//!   connection after rollback.
 //!
 //! Transaction completion [preserves the original operation error](crate::transaction)
 //! if rollback also fails.
 //!
 //! # Stacks
 //!
-//! - [`presets::RepositoryLookupStack`] — identity lookup, insert, insert-or-get,
+//! - [`presets::RepositoryLookupStack`] — identity lookup, insert, get-or-create,
 //!   upsert, pagination, and default policies.
-//! - [`presets::RepositoryCrudStack`] — lookup plus find / update / delete by id.
+//! - [`presets::RepositoryCrudStack`] — lookup plus get / update / delete by id.
 //! - [`presets::ResourceServiceStack`] — generic input/output service providers.
 //!
 //! An application composes them explicitly:
