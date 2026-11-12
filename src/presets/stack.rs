@@ -8,6 +8,7 @@
 use cgp_fork::prelude::*;
 
 use cgp_orm::providers::conflict::StandardUniqueConflict;
+use cgp_orm::providers::filter::NoEntityFilter;
 use cgp_orm::providers::identity::UniqueColumnsIdentity;
 use cgp_orm::providers::pagination::{DefaultPaginationPolicy, PrimaryKeyOrdering};
 use cgp_orm::providers::repository::{
@@ -22,7 +23,8 @@ use cgp_orm::providers::transaction::NoopPrepareEntityWrite;
 
 // Contexts still provide HasEntityType, HasUniqueColumns (for the default
 // identity), and an error map. Override IdentityConditionBuilderComponent
-// for a custom identity, and PaginationPolicyComponent for custom sizes.
+// for a custom identity, PaginationPolicyComponent for custom sizes, and
+// EntityFilterBuilderComponent for a tenant, search, or soft-delete filter.
 cgp_preset! {
     RepositoryLookupStack {
         cgp_orm::components::EntityPaginatorComponent:
@@ -43,6 +45,8 @@ cgp_preset! {
             PrimaryKeyOrdering,
         cgp_orm::components::PaginationPolicyComponent:
             DefaultPaginationPolicy,
+        cgp_orm::components::EntityFilterBuilderComponent:
+            NoEntityFilter,
         cgp_orm::components::UniqueConflictDetectorComponent:
             StandardUniqueConflict,
     }

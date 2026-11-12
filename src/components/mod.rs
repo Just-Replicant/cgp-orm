@@ -1,7 +1,8 @@
 //! CGP component traits for the repository, identity, transaction, pagination,
-//! conflict, and resource-service layers.
+//! filter, conflict, and resource-service layers.
 
 pub mod conflict;
+pub mod filter;
 pub mod identity;
 pub mod pagination;
 pub mod repository;
@@ -11,6 +12,7 @@ pub mod transaction;
 pub use conflict::{
     CanDetectUniqueConflict, UniqueConflictDetector, UniqueConflictDetectorComponent,
 };
+pub use filter::{CanBuildEntityFilter, EntityFilterBuilder, EntityFilterBuilderComponent};
 pub use identity::{
     CanBuildIdentityCondition, IdentityConditionBuilder, IdentityConditionBuilderComponent,
 };
