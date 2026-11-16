@@ -24,6 +24,11 @@ cargo clippy --all-targets -- -D warnings
 These are described in full in the changelog. The ones that may be
 **breaking** for existing callers:
 
+- `HasUniqueColumns::unique_columns` returns `&'static [Column]`: write
+  `&[Column::Name]` instead of `vec![Column::Name]`.
+- `util::value_tuple_from_vec` / `value_tuple_to_vec` and
+  `PrimaryKeyReadError::Arity` are removed.
+
 - `ErrEntityNotFound` now has an `entity_name` field (`type_name` only).
   Use `ErrEntityNotFound::of::<E>()`.
 - `Page::total` is `Option<u64>`. `PageRequest::without_total()` skips
