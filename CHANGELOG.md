@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/Just-Replicant/cgp-orm/compare/v0.1.2...v0.1.3) - 2026-11-16
+
+### Changed
+
+- *(repository)* get_or_create without cloning the model
+- *(accessors)* return static unique column slices
+- *(conflict)* match unique messages on one rendered string
+- *(util)* walk primary keys without Vec allocation
+
+### Documentation
+
+- note allocation cuts and unique_columns break
+- *(lib)* shorten design principle crate docs
+- *(architecture)* tighten layer and stack overview
+
+### Other
+
+- Merge branch 'main' of github.com:Just-Replicant/cgp-orm
+
 ### Breaking
 
 - `HasUniqueColumns::unique_columns` now returns
