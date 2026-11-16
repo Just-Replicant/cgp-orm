@@ -8,8 +8,7 @@
 //! choose policies (identity, pagination, ordering, entity filter, conflict,
 //! transaction hooks, error mapping) by wiring providers through CGP presets.
 //!
-//! The design principle: **presets compose behavior, contexts choose policies,
-//! and macros do not own architecture.**
+//! The design principle: **presets compose behavior; contexts choose policies.**
 //!
 //! # Primary keys
 //!
