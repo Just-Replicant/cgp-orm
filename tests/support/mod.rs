@@ -10,6 +10,7 @@ use cgp_fork::extra::error::{RaiseFrom, RaiseInfallible, ReturnError};
 use cgp_fork::prelude::*;
 use cgp_orm::accessors::{UniqueColumnsGetter, UniqueColumnsGetterComponent};
 use cgp_orm::components::filter::{EntityFilterBuilder, EntityFilterBuilderComponent};
+use cgp_orm::components::repository::{EntityIdentityFinder, EntityIdentityFinderComponent};
 use cgp_orm::components::service::{
     ApplyUpdateInput, ApplyUpdateInputComponent, DecodeCreateInput, DecodeCreateInputComponent,
     EncodeOutput, EncodeOutputComponent, HasCreateInputType, HasOutputType, HasUpdateInputType,
@@ -147,8 +148,8 @@ pub struct ItemUniqueColumns;
 #[cgp_impl(ItemUniqueColumns)]
 #[use_type(HasEntityType.{Entity = item::Entity})]
 impl UniqueColumnsGetter {
-    fn unique_columns(&self) -> Vec<item::Column> {
-        vec![item::Column::Name]
+    fn unique_columns(&self) -> &'static [item::Column] {
+        &[item::Column::Name]
     }
 }
 
@@ -227,8 +228,8 @@ pub struct DocumentUniqueColumns;
 #[cgp_impl(DocumentUniqueColumns)]
 #[use_type(HasEntityType.{Entity = document::Entity})]
 impl UniqueColumnsGetter {
-    fn unique_columns(&self) -> Vec<document::Column> {
-        vec![document::Column::Title]
+    fn unique_columns(&self) -> &'static [document::Column] {
+        &[document::Column::Title]
     }
 }
 
@@ -310,8 +311,8 @@ pub struct MembershipUniqueColumns;
 #[cgp_impl(MembershipUniqueColumns)]
 #[use_type(HasEntityType.{Entity = membership::Entity})]
 impl UniqueColumnsGetter {
-    fn unique_columns(&self) -> Vec<membership::Column> {
-        vec![membership::Column::UserId, membership::Column::GroupId]
+    fn unique_columns(&self) -> &'static [membership::Column] {
+        &[membership::Column::UserId, membership::Column::GroupId]
     }
 }
 
@@ -520,6 +521,47 @@ delegate_components! {
         preset ItemAppPreset,
         cgp_orm::components::UniqueConflictDetectorComponent:
             OrUniqueConflict<SqlErrUniqueConflict, MessageUniqueConflict>,
+    }
+}
+
+/// Simulates losing the `get_or_create` race: the initial identity lookup
+/// always misses, as if a concurrent writer inserted the row right after
+/// it ran. The insert then hits the unique constraint, and the conflict
+/// refetch must find the winner through the identity condition it kept.
+#[derive(HasField, Clone)]
+pub struct StaleReadItemApp {
+    pub db_conn: DatabaseConnection,
+}
+
+impl StaleReadItemApp {
+    pub fn new(db_conn: DatabaseConnection) -> Self {
+        Self { db_conn }
+    }
+}
+
+/// Identity finder that never sees an existing row.
+pub struct AlwaysMissIdentity;
+
+#[cgp_impl(AlwaysMissIdentity)]
+#[use_type(HasEntityType.{Entity = item::Entity}, HasErrorType.Error)]
+impl EntityIdentityFinder
+where
+    Self: Sync,
+    item::ActiveModel: Sync,
+{
+    async fn find_by_identity(
+        &self,
+        _model: &item::ActiveModel,
+    ) -> Result<Option<item::Model>, Error> {
+        Ok(None)
+    }
+}
+
+delegate_components! {
+    #[unchecked]
+    StaleReadItemApp {
+        preset ItemAppPreset,
+        cgp_orm::components::EntityIdentityFinderComponent: AlwaysMissIdentity,
     }
 }
 

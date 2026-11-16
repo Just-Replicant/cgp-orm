@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Breaking
+
+- `HasUniqueColumns::unique_columns` now returns
+  `&'static [ColumnOf<Self>]` instead of `Vec<ColumnOf<Self>>`. The list
+  is a static context policy of `Copy` column enums, so building an
+  identity condition no longer allocates a column list. Change providers
+  from `vec![Column::Name]` to `&[Column::Name]`. `HasUniqueColumns` is
+  now declared with `#[cgp_component(UniqueColumnsGetter)]` instead of
+  `#[cgp_getter]` (a `'static` slice is not a field borrow); the provider
+  trait `UniqueColumnsGetter` and the key `UniqueColumnsGetterComponent`
+  keep their names, so existing wiring is unchanged. The public identity
+  API is still `CanBuildIdentityCondition`.
+- Removed `util::value_tuple_from_vec` and `util::value_tuple_to_vec`.
+  The primary-key helpers now match `ValueTuple::One` / `Two` / `Three`
+  directly and consume the `Vec` that `ValueTuple::Many` already owns.
+- Removed `PrimaryKeyReadError::Arity`. Reading a key can no longer fail
+  on arity (an empty key is `PrimaryKeyReadError::Missing`), so
+  `UpdateEntityById` no longer requires `CanRaiseError<ErrUnsupportedKeyArity>`.
+  `PrimaryKeyWriteError::Arity` is unchanged and still reports a key value
+  whose arity does not match the entity.
+
+### Changed
+
+- `get_or_create` no longer clones the active model. The identity lookup
+  borrows the model, so the common "row already exists" path copies no
+  `Set` strings or blobs. On a miss the identity `Condition` (just the
+  identity values) is built before the insert consumes the model, and a
+  unique-conflict refetch reuses that condition, ANDed with the entity
+  filter, on a clean connection. `GetOrCreateEntity` no longer requires
+  `ActiveModel: Clone`. `upsert` still clones once, because the conflict
+  path needs the full model for `merge_update`.
+- `is_primary_key_column`, `merge_update`, `primary_key_from_active_model`,
+  and `set_primary_key_on_active_model` walk `PrimaryKey::iter()` in place
+  instead of collecting `primary_key_columns()` into a `Vec` (the empty-key
+  check is `iter().next().is_none()`). Columns are still compared by
+  `as_str()`, so column enums need no `PartialEq` bound. Keys of arity
+  1–3 are read and written without any intermediate `Vec`.
+- The unique-conflict message fallback renders the `DbErr` once and scans
+  that single string with an ASCII case-insensitive substring check. The
+  PostgreSQL, MySQL, and SQLite matchers no longer each build a lowercased
+  copy. The structured `sql_err()` and `RecordNotInserted` checks still
+  return before any string is formatted.
+
 ## [0.1.2](https://github.com/Just-Replicant/cgp-orm/compare/v0.1.1...v0.1.2) - 2026-11-12
 
 ### Added

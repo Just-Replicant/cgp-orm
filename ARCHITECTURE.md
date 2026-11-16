@@ -33,18 +33,25 @@ pub type PrimaryKeyOf<C> =
 ```
 
 `get_by_id` / `delete_by_id` take this type. Helpers in `util` read and
-write **every** key column; `merge_update` never copies PK fields.
+write **every** key column; `merge_update` never copies PK fields. They
+walk `PrimaryKey::iter()` in place (no collected column `Vec`) and build
+`ValueTuple::One` / `Two` / `Three` directly; only a 4+ column key
+allocates, for `ValueTuple::Many`.
 
 # Identity
 
 `CanBuildIdentityCondition` builds the lookup `Condition`.
-`UniqueColumnsIdentity` ANDs `HasUniqueColumns::unique_columns`. The
-identity used by `get_or_create` must match a database unique constraint.
+`UniqueColumnsIdentity` ANDs `HasUniqueColumns::unique_columns`, a
+`&'static [Column]` policy (`&[Column::Name]`), so no column list is
+allocated per lookup. The identity used by `get_or_create` must match a
+database unique constraint.
 
 # Write semantics
 
-- `get_or_create` — select by identity; on miss insert; on unique conflict
-  roll back and re-fetch.
+- `get_or_create` — select by identity (borrowing the model, no clone);
+  on miss build the identity `Condition`, then insert (consuming the
+  model); on unique conflict roll back and re-fetch with that kept
+  condition plus the entity filter.
 - `upsert` — find by identity; hit → merge-update, miss → insert; on
   concurrent unique conflict roll back and merge-update on a new txn.
 - `conclude_transaction` never swallows the original error on a failed
@@ -60,7 +67,10 @@ crate.
 # Unique-conflict detection
 
 Policy is a CGP component. Default: `StandardUniqueConflict`
-(`sql_err` → `RecordNotInserted` → message fallback). Alternatives:
+(`sql_err` → `RecordNotInserted` → message fallback). The fallback
+formats the error once and matches every backend's phrases on that one
+string, ASCII case-insensitively, without further allocation.
+Alternatives:
 `SqlErrUniqueConflict`, backend-specific matchers, `MessageUniqueConflict`,
 `OrUniqueConflict<A, B>`.
 

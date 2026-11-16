@@ -26,10 +26,25 @@ pub trait HasDbConn {
 /// [`sea_orm::Condition`]. Contexts with a more complex identity skip this
 /// getter and implement [`crate::components::CanBuildIdentityCondition`]
 /// directly.
-#[cgp_getter]
+///
+/// This is a regular component (provider trait [`UniqueColumnsGetter`],
+/// key `UniqueColumnsGetterComponent`) rather than a `#[cgp_getter]`
+/// field getter, because the list is a `'static` policy, not a borrow of a
+/// context field.
+#[cgp_component(UniqueColumnsGetter)]
 #[use_type(HasEntityType.Entity)]
 pub trait HasUniqueColumns {
     /// Columns that together identify a unique row (must match a database
     /// unique constraint used by `get_or_create`).
-    fn unique_columns(&self) -> Vec<ColumnOf<Self>>;
+    ///
+    /// The list is a static context policy of `Copy` column enums, so it is
+    /// returned as a `'static` slice and building an identity condition
+    /// does not allocate a column list:
+    ///
+    /// ```ignore
+    /// fn unique_columns(&self) -> &'static [item::Column] {
+    ///     &[item::Column::Name]
+    /// }
+    /// ```
+    fn unique_columns(&self) -> &'static [ColumnOf<Self>];
 }

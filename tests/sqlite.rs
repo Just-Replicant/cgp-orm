@@ -9,8 +9,8 @@ use sea_orm::{ActiveModelTrait, EntityTrait, NotSet, Set, TryIntoModel};
 use support::entities::{document, item, membership};
 use support::{
     DocumentInput, FailingItemApp, FilteredItemApp, ItemInput, MembershipInput,
-    SqlErrOrMessageItemApp, TightPageItemApp, create_table, setup_documents, setup_items,
-    setup_memberships,
+    SqlErrOrMessageItemApp, StaleReadItemApp, TightPageItemApp, create_table, setup_documents,
+    setup_items, setup_memberships,
 };
 
 // ---------------------------------------------------------------------------
@@ -229,6 +229,79 @@ async fn get_or_create_returns_existing_on_unique_conflict() {
         third.id,
         first.id + 1,
         "a repeat get_or_create must not consume an id"
+    );
+}
+
+#[tokio::test]
+async fn get_or_create_refetches_the_winner_after_a_lost_race() {
+    let (app, db) = setup_items().await;
+    let winner = app
+        .insert(item::ActiveModel {
+            id: NotSet,
+            name: Set("raced".into()),
+            value: Set(1),
+        })
+        .await
+        .unwrap();
+
+    // The identity lookup misses, so the insert runs and hits the unique
+    // constraint. Recovery must roll back and refetch with the identity
+    // condition built before the insert consumed the model.
+    let stale = StaleReadItemApp::new(db);
+    let (fetched, outcome) = CanGetOrCreateEntity::get_or_create(
+        &stale,
+        item::ActiveModel {
+            id: NotSet,
+            name: Set("raced".into()),
+            value: Set(42),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome, InsertOutcome::Existing);
+    assert_eq!(
+        fetched, winner,
+        "the winning row is returned, not the input"
+    );
+
+    let page = app.paginate(PageRequest::new(1, 10)).await.unwrap();
+    assert_eq!(page.total, Some(1), "the losing insert was rolled back");
+}
+
+#[tokio::test]
+async fn get_or_create_conflict_refetch_applies_the_entity_filter() {
+    let (app, db) = setup_items().await;
+    // `value = 2` is excluded by FilteredItemApp's filter (`value = 1`).
+    app.insert(item::ActiveModel {
+        id: NotSet,
+        name: Set("hidden".into()),
+        value: Set(2),
+    })
+    .await
+    .unwrap();
+
+    let filtered = FilteredItemApp::new(db);
+    let err = CanGetOrCreateEntity::get_or_create(
+        &filtered,
+        item::ActiveModel {
+            id: NotSet,
+            name: Set("hidden".into()),
+            value: Set(1),
+        },
+    )
+    .await
+    .expect_err("a conflict on a filtered-out row cannot be recovered");
+    assert!(
+        err.to_string()
+            .contains(&ErrConflictFetchFailed.to_string()),
+        "unexpected error: {err}"
+    );
+
+    let page = app.paginate(PageRequest::new(1, 10)).await.unwrap();
+    assert_eq!(
+        page.total,
+        Some(1),
+        "the conflicting insert was rolled back"
     );
 }
 
@@ -769,4 +842,36 @@ fn set_primary_key_writes_every_column_without_panicking() {
     set_primary_key_on_active_model::<membership::Entity>(&mut membership, (4, 5)).unwrap();
     assert_eq!(membership.user_id, Set(4));
     assert_eq!(membership.group_id, Set(5));
+}
+
+#[test]
+fn primary_key_round_trips_through_active_model() {
+    use cgp_orm::util::{
+        PrimaryKeyReadError, is_primary_key_column, primary_key_from_active_model,
+    };
+
+    let mut membership = membership::ActiveModel {
+        user_id: NotSet,
+        group_id: NotSet,
+        role: Set("member".into()),
+    };
+    assert!(matches!(
+        primary_key_from_active_model::<membership::Entity>(&membership),
+        Err(PrimaryKeyReadError::Unset(_))
+    ));
+    set_primary_key_on_active_model::<membership::Entity>(&mut membership, (8, 9)).unwrap();
+    assert_eq!(
+        primary_key_from_active_model::<membership::Entity>(&membership).unwrap(),
+        (8, 9)
+    );
+
+    assert!(is_primary_key_column::<membership::Entity>(
+        membership::Column::UserId
+    ));
+    assert!(is_primary_key_column::<membership::Entity>(
+        membership::Column::GroupId
+    ));
+    assert!(!is_primary_key_column::<membership::Entity>(
+        membership::Column::Role
+    ));
 }

@@ -32,7 +32,8 @@ where
     ColumnOf<Self>: ColumnTrait + Copy + Debug,
 {
     fn identity_condition(&self, model: &ActiveModelOf<Self>) -> Result<Condition, Error> {
-        condition_from_columns::<Entity, _>(model, self.unique_columns()).map_err(|err| match err {
+        let columns = self.unique_columns().iter().copied();
+        condition_from_columns::<Entity, _>(model, columns).map_err(|err| match err {
             ColumnLookupError::Empty => Self::raise_error(ErrIdentityEmpty),
             ColumnLookupError::Unset(column) => Self::raise_error(ErrIdentityFieldUnset { column }),
         })

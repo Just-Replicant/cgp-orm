@@ -73,15 +73,19 @@ impl ErrPrimaryKeySetFailed {
     }
 }
 
-/// The entity's primary key has an arity this crate cannot encode.
+/// A primary-key value's arity does not match the entity's key columns.
 ///
-/// Raised when a key has **zero** columns. SeaORM 2 encodes arity 1–3 as
-/// dedicated [`sea_orm::ValueTuple`] variants and arity 4+ as
-/// `ValueTuple::Many`, all of which are supported.
+/// Raised by [`crate::util::set_primary_key_on_active_model`] when the
+/// key value carries a different number of components than the entity
+/// declares (for example, a hand-built `ValueType` whose `ValueTuple` is
+/// the wrong length). SeaORM 2 encodes arity 1–3 as dedicated
+/// [`sea_orm::sea_query::ValueTuple`] variants and arity 4+ as `ValueTuple::Many`,
+/// all of which are supported. An entity with **zero** key columns is
+/// reported as [`ErrMissingPrimaryKey`] instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("unsupported primary-key arity: {arity}")]
 pub struct ErrUnsupportedKeyArity {
-    /// Number of primary-key columns encountered.
+    /// Number of key components in the supplied value.
     pub arity: usize,
 }
 
