@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/Just-Replicant/cgp-orm/compare/v0.1.1...v0.1.2) - 2026-11-12
+
+### Added
+
+- *(pagination)* optional COUNT and apply entity filter
+- *(filter)* add entity filter component and default
+
+### Documentation
+
+- document filter, optional totals, and hardening
+
+### Fixed
+
+- *(conflict)* tighten sqlite unique matcher
+- *(error)* name not-found and typed PK set failure
+
+### Other
+
+- Merge branch 'feature/conflict-filter-hardening'
+
 ## [0.1.1](https://github.com/Just-Replicant/cgp-orm/compare/v0.1.0...v0.1.1) - 2026-11-12
 
 ### Changed
