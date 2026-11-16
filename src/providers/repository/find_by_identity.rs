@@ -1,5 +1,5 @@
 use cgp_fork::prelude::*;
-use sea_orm::{EntityTrait, QueryFilter};
+use sea_orm::{Condition, ConnectionTrait, DbErr, EntityTrait, QueryFilter};
 
 use crate::accessors::HasDbConn;
 use crate::components::filter::CanBuildEntityFilter;
@@ -40,11 +40,34 @@ where
         &self,
         model: &ActiveModelOf<Self>,
     ) -> Result<Option<ModelOf<Self>>, Error> {
-        Entity::find()
-            .filter(self.entity_filter()?)
-            .filter(self.identity_condition(model)?)
-            .one(self.db_conn())
-            .await
-            .map_err(Self::raise_error)
+        find_one_by_identity::<Entity, _>(
+            self.db_conn(),
+            self.entity_filter()?,
+            self.identity_condition(model)?,
+        )
+        .await
+        .map_err(Self::raise_error)
     }
+}
+
+/// Load at most one row matching `entity_filter AND identity`.
+///
+/// This is the query [`FindEntityByIdentity`] runs. Providers that already
+/// hold an owned identity [`Condition`] (for example the `get_or_create`
+/// conflict refetch, after the insert has consumed the model) call it
+/// directly so they need neither the model nor a clone of it.
+pub(crate) async fn find_one_by_identity<E, C>(
+    conn: &C,
+    entity_filter: Condition,
+    identity: Condition,
+) -> Result<Option<E::Model>, DbErr>
+where
+    E: EntityTrait,
+    C: ConnectionTrait,
+{
+    E::find()
+        .filter(entity_filter)
+        .filter(identity)
+        .one(conn)
+        .await
 }
