@@ -1,9 +1,9 @@
 //! Identity policy: how a row is looked up by its natural key.
 //!
-//! This replaces the previous `fn unique_columns(&self) -> Vec<Column>`
-//! accessor as the public identity API. A reusable
-//! [`crate::providers::UniqueColumnsIdentity`] provider still builds a
-//! condition from a column list for the common case. Entities with a more
+//! This replaces the previous `unique_columns` accessor as the public
+//! identity API. A reusable [`crate::providers::UniqueColumnsIdentity`]
+//! provider still builds a condition from a static column list
+//! ([`crate::accessors::HasUniqueColumns`]) for the common case. Entities with a more
 //! complex identity (partial uniques, `OR` groups, expressions) implement
 //! this trait themselves.
 
