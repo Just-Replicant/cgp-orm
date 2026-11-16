@@ -7,7 +7,7 @@ use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Iterable, Transact
 use crate::accessors::HasDbConn;
 use crate::components::repository::{EntityByIdUpdater, EntityByIdUpdaterComponent};
 use crate::components::transaction::CanPrepareEntityWrite;
-use crate::error::{ErrMissingPrimaryKey, ErrPrimaryKeyUnset, ErrUnsupportedKeyArity};
+use crate::error::{ErrMissingPrimaryKey, ErrPrimaryKeyUnset};
 use crate::transaction::conclude_transaction;
 use crate::types::{ColumnOf, HasEntityType, ModelOf};
 use crate::util::{
@@ -26,8 +26,7 @@ pub struct UpdateEntityById;
     CanPrepareEntityWrite,
     CanRaiseError<sea_orm::DbErr>,
     CanRaiseError<ErrPrimaryKeyUnset<ColumnOf<Self>>>,
-    CanRaiseError<ErrMissingPrimaryKey>,
-    CanRaiseError<ErrUnsupportedKeyArity>
+    CanRaiseError<ErrMissingPrimaryKey>
 )]
 #[use_type(HasEntityType.Entity, HasErrorType.Error)]
 impl EntityByIdUpdater
@@ -48,7 +47,6 @@ where
             Ok(id) => id,
             Err(PrimaryKeyReadError::Missing(err)) => return Err(Self::raise_error(err)),
             Err(PrimaryKeyReadError::Unset(err)) => return Err(Self::raise_error(err)),
-            Err(PrimaryKeyReadError::Arity(err)) => return Err(Self::raise_error(err)),
         };
 
         let txn = self.db_conn().begin().await.map_err(Self::raise_error)?;
