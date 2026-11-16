@@ -160,6 +160,10 @@ where
 /// Whether `err` represents a unique-constraint (or primary-key) violation
 /// under the [`StandardUniqueConflict`] algorithm.
 ///
+/// The structured and [`DbErr::RecordNotInserted`] checks short-circuit
+/// before the error is rendered, so the sqlx path never formats a string.
+/// The message fallback renders the error once and scans that one string.
+///
 /// Prefer wiring a [`CanDetectUniqueConflict`][crate::components::CanDetectUniqueConflict]
 /// policy on the context over calling this function from application code.
 #[must_use]
@@ -176,6 +180,11 @@ pub fn sql_err_is_unique(err: &DbErr) -> bool {
 }
 
 /// Multi-backend message fallback used by [`MessageUniqueConflict`].
+///
+/// Callers render the error once (`err.to_string()`) and pass that single
+/// string here. Every backend matcher scans it with an ASCII
+/// case-insensitive substring check, so the fallback performs no further
+/// allocation (no per-backend lowercased copy).
 #[must_use]
 pub fn message_is_unique(message: &str) -> bool {
     postgres_unique_message(message)
@@ -186,22 +195,26 @@ pub fn message_is_unique(message: &str) -> bool {
 /// PostgreSQL unique-violation phrases.
 #[must_use]
 pub fn postgres_unique_message(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("23505")
-        || lower.contains("unique violation")
-        || lower.contains("duplicate key value")
+    contains_any_ignore_ascii_case(
+        message,
+        &["23505", "unique violation", "duplicate key value"],
+    )
 }
 
 /// MySQL unique-violation phrases.
 #[must_use]
 pub fn mysql_unique_message(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("duplicate entry")
-        || lower.contains("duplicate key")
-        || lower.contains("error 1062")
-        || lower.contains("errno 1062")
-        || lower.contains("error code 1062")
-        || lower.contains("(1062)")
+    contains_any_ignore_ascii_case(
+        message,
+        &[
+            "duplicate entry",
+            "duplicate key",
+            "error 1062",
+            "errno 1062",
+            "error code 1062",
+            "(1062)",
+        ],
+    )
 }
 
 /// SQLite unique- and primary-key-violation phrases.
@@ -215,11 +228,36 @@ pub fn mysql_unique_message(message: &str) -> bool {
 /// appears in foreign-key and check-constraint errors.
 #[must_use]
 pub fn sqlite_unique_message(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("unique constraint failed")
-        || lower.contains("primary key constraint failed")
-        || lower.contains("sqlite_constraint_unique")
-        || lower.contains("sqlite_constraint_primarykey")
+    contains_any_ignore_ascii_case(
+        message,
+        &[
+            "unique constraint failed",
+            "primary key constraint failed",
+            "sqlite_constraint_unique",
+            "sqlite_constraint_primarykey",
+        ],
+    )
+}
+
+/// Whether `haystack` contains any of `needles`, ignoring ASCII case.
+fn contains_any_ignore_ascii_case(haystack: &str, needles: &[&str]) -> bool {
+    needles
+        .iter()
+        .any(|needle| contains_ignore_ascii_case(haystack, needle))
+}
+
+/// Whether `haystack` contains `needle`, ignoring ASCII case.
+///
+/// Compares byte windows in place, so it allocates nothing. Non-ASCII
+/// bytes compare exactly, which is safe for UTF-8: an ASCII needle can
+/// only match ASCII bytes.
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    let needle = needle.as_bytes();
+    needle.is_empty()
+        || haystack
+            .as_bytes()
+            .windows(needle.len())
+            .any(|window| window.eq_ignore_ascii_case(needle))
 }
 
 #[cfg(test)]
@@ -303,6 +341,32 @@ mod tests {
             "UNIQUE constraint failed: items.name"
         ));
         assert!(!message_is_unique("unique constraint"));
+    }
+
+    #[test]
+    fn ascii_case_insensitive_substring() {
+        assert!(contains_ignore_ascii_case(
+            "UNIQUE Constraint FAILED",
+            "unique constraint failed"
+        ));
+        assert!(contains_ignore_ascii_case("abc", ""));
+        assert!(!contains_ignore_ascii_case("ab", "abc"));
+        assert!(!contains_ignore_ascii_case("", "a"));
+        // Non-ASCII bytes do not disturb matching around them.
+        assert!(contains_ignore_ascii_case(
+            "ä Duplicate Entry ö",
+            "duplicate entry"
+        ));
+        assert!(!contains_ignore_ascii_case("ÄBC", "äbc"));
+    }
+
+    #[test]
+    fn matchers_ignore_ascii_case() {
+        assert!(postgres_unique_message("DUPLICATE KEY VALUE violates"));
+        assert!(mysql_unique_message("duplicate ENTRY 'a' for key"));
+        assert!(mysql_unique_message("Error Code 1062"));
+        assert!(sqlite_unique_message("sqlite_constraint_unique"));
+        assert!(message_is_unique("Unique Violation"));
     }
 
     #[test]
